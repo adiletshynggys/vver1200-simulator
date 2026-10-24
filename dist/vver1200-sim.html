@@ -1,0 +1,1938 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VVER-1200 plant simulator</title>
+<meta name="description" content="Interactive 3D VVER-1200 nuclear power plant: point-kinetics reactor model, control rods, primary and secondary circuits, turbine and core cross-sections.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#d3d9cd; --panel:#c6cdbf; --well:#dde2d7; --ink:#1c2520; --ink-2:#4b574f; --rule:#98a395;
+  --hot:#b8352b; --cold:#2d67a8; --steam:#a77d0c; --feed:#2a7d4c; --cw:#1f7f99; --lamp-off:#8a9287;
+  --scram:#b3231b; --focus:#1f63c4;
+  --water:#d3e9f5; --gap:#eef4f6; --clad:#9aa4ab; --steel:#a9b3b9; --abs:#262d31; --gd:#2f9c62; --xs-line:#7d8a80;
+  --stage:#0b1216; --stage-ink:#e6eee8; --stage-ink-2:#9fb0a6;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#131a17; --panel:#1a221e; --well:#111815; --ink:#dde5da; --ink-2:#98a69c; --rule:#34413a;
+    --hot:#e45a4d; --cold:#5f9fe4; --steam:#e0b43c; --feed:#53b67c; --cw:#4fbfdb; --lamp-off:#3a443e;
+    --scram:#d0362c; --focus:#7fb2ff;
+    --water:#17384a; --gap:#2a3a42; --clad:#6d7880; --steel:#7b868d; --abs:#0b0f11; --gd:#5fd394; --xs-line:#3f4d46;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#131a17; --panel:#1a221e; --well:#111815; --ink:#dde5da; --ink-2:#98a69c; --rule:#34413a;
+  --hot:#e45a4d; --cold:#5f9fe4; --steam:#e0b43c; --feed:#53b67c; --cw:#4fbfdb; --lamp-off:#3a443e;
+  --scram:#d0362c; --focus:#7fb2ff;
+  --water:#17384a; --gap:#2a3a42; --clad:#6d7880; --steel:#7b868d; --abs:#0b0f11; --gd:#5fd394; --xs-line:#3f4d46;
+  color-scheme:dark;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html.xs-open, html.xs-open body{overflow:hidden}
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none !important}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.45 Barlow,"Segoe UI",system-ui,sans-serif}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+.app{display:grid;grid-template-columns:1fr}
+.stage{position:relative;height:58vh;min-height:330px;background:var(--stage);overflow:hidden;color:var(--stage-ink)}
+#scene{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+#scene:active{cursor:grabbing}
+.panel{background:var(--panel);padding:16px 16px 28px;border-top:1px solid var(--rule)}
+@media (min-width:900px){
+  html,body{height:100%}
+  body{overflow:hidden}
+  .app{height:100%;grid-template-columns:minmax(0,1fr) 410px}
+  .stage{height:100%}
+  .panel{height:100%;overflow-y:auto;border-top:0;border-left:1px solid var(--rule)}
+}
+
+/* stage overlays */
+.views{position:absolute;top:10px;left:10px;display:flex;gap:6px;flex-wrap:wrap;max-width:calc(100% - 20px)}
+.views button{background:rgba(14,24,28,.72);border:1px solid rgba(160,190,175,.3);color:var(--stage-ink);padding:6px 11px;border-radius:999px;font:500 14px "Barlow Condensed",Barlow,sans-serif;letter-spacing:.02em;cursor:pointer;backdrop-filter:blur(6px)}
+.views button[aria-pressed="true"]{background:#e6eee8;color:#0b1216;border-color:#e6eee8}
+.labels{position:absolute;inset:0;pointer-events:none}
+.tag{position:absolute;left:0;top:0;pointer-events:auto;transform:translate(-50%,-100%);background:none;border:0;padding:0 0 10px;cursor:pointer;color:var(--stage-ink);font:600 13px "Barlow Condensed",Barlow,sans-serif;white-space:nowrap;text-shadow:0 1px 3px #000}
+.tag::after{content:"";position:absolute;left:50%;bottom:0;width:1px;height:9px;background:rgba(230,238,232,.6)}
+.tag span{display:inline-block;padding:2px 7px;border-radius:3px;background:rgba(8,16,20,.62)}
+.trip{position:absolute;left:50%;top:52px;transform:translateX(-50%);background:#b3231b;color:#fff;padding:7px 14px;border-radius:4px;font:600 15px "Barlow Condensed",Barlow,sans-serif;box-shadow:0 0 0 3px rgba(179,35,27,.35);max-width:calc(100% - 24px);text-align:center}
+.info{position:absolute;left:10px;bottom:40px;width:min(350px,calc(100% - 20px));background:rgba(10,18,22,.88);border:1px solid rgba(160,190,175,.25);border-radius:6px;padding:12px 14px;backdrop-filter:blur(8px)}
+.info h3{margin:0 26px 4px 0;font:600 18px "Barlow Condensed",Barlow,sans-serif}
+.info p{margin:0;color:var(--stage-ink-2);font-size:14px}
+.info .live{margin-top:6px;color:var(--stage-ink);font-size:14px;font-variant-numeric:tabular-nums}
+.info .x{position:absolute;top:4px;right:4px;background:none;border:0;color:var(--stage-ink-2);font-size:22px;line-height:1;padding:4px 9px;cursor:pointer}
+.info .go{margin-top:9px;background:#e6eee8;color:#0b1216;border:0;border-radius:4px;padding:6px 10px;font:600 14px "Barlow Condensed",Barlow,sans-serif;cursor:pointer}
+.hint{position:absolute;right:10px;bottom:8px;left:10px;margin:0;color:var(--stage-ink-2);font-size:12px;text-align:right;pointer-events:none}
+
+/* panel */
+.head h1{margin:0;font:700 30px/1 "Barlow Condensed",Barlow,sans-serif;letter-spacing:.01em}
+.head p{margin:4px 0 10px;color:var(--ink-2);font-size:14px}
+.pipes-key{display:flex;flex-wrap:wrap;gap:4px 12px;margin:0 0 14px;font-size:13px;color:var(--ink-2)}
+.pipes-key i{display:inline-block;width:16px;height:6px;border-radius:3px;margin-right:5px;vertical-align:middle}
+.big{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.meter{background:var(--well);border:1px solid var(--rule);border-radius:4px;padding:8px 10px 6px}
+.meter .k{font-size:13px;color:var(--ink-2)}
+.meter .v{font:600 34px/1.05 "Barlow Condensed",Barlow,sans-serif;font-variant-numeric:tabular-nums}
+.meter .v small{font-size:15px;font-weight:500;color:var(--ink-2);margin-left:3px}
+.meter.th .v{color:var(--hot)}
+.meter.el .v{color:var(--steam)}
+.bar{height:4px;background:var(--rule);border-radius:2px;margin-top:4px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:currentColor}
+.meter.th .bar{color:var(--hot)} .meter.el .bar{color:var(--steam)}
+.small{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}
+.small div{background:var(--well);border:1px solid var(--rule);border-radius:4px;padding:5px 8px}
+.small .k{display:block;font-size:12px;color:var(--ink-2);line-height:1.2}
+.small .v{font:600 19px/1.15 "Barlow Condensed",Barlow,sans-serif;font-variant-numeric:tabular-nums}
+.logm{margin-top:8px;background:var(--well);border:1px solid var(--rule);border-radius:4px;padding:6px 8px 7px}
+.logm .row{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;color:var(--ink-2)}
+.logm .row b{font:600 18px "Barlow Condensed",Barlow,sans-serif;color:var(--ink);font-variant-numeric:tabular-nums}
+.logm .track{position:relative;height:9px;margin-top:4px;border-radius:2px;background:repeating-linear-gradient(90deg,transparent 0 calc(12.5% - 1px),var(--rule) calc(12.5% - 1px) 12.5%),var(--panel)}
+.logm .track i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--cold);border-radius:2px;opacity:.85}
+.logm .scale{display:flex;justify-content:space-between;font-size:11px;color:var(--ink-2);margin-top:2px}
+
+.lamps{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin:14px 0 4px;font-size:14px}
+.lamp{display:flex;align-items:center;gap:8px}
+.lamp i{width:12px;height:12px;border-radius:50%;background:var(--lamp-off);flex:none;box-shadow:inset 0 -2px 3px rgba(0,0,0,.25)}
+.lamp.on i{background:var(--c);box-shadow:0 0 8px var(--c),inset 0 -2px 3px rgba(0,0,0,.2)}
+
+section.block{margin-top:18px;padding-top:12px;border-top:1px solid var(--rule)}
+section.block h2{margin:0 0 8px;font:600 19px "Barlow Condensed",Barlow,sans-serif}
+
+/* regulating rods */
+.rodctl{display:grid;grid-template-columns:58px 1fr;gap:12px;align-items:stretch}
+.gauge{position:relative;height:172px;border:1px solid var(--rule);border-radius:4px;background:var(--well);overflow:hidden}
+.gauge .core{position:absolute;left:6px;right:18px;bottom:6px;height:calc(100% - 12px);background:linear-gradient(#f2a54155,#ea7b2c66);border-radius:2px}
+.gauge .rod{position:absolute;left:14px;width:16px;top:6px;height:0;background:#2b3236;border-bottom:4px solid #ffc83a;border-radius:0 0 2px 2px}
+.gauge .sd{position:absolute;right:6px;width:7px;top:6px;height:0;background:#55606a;border-radius:0 0 2px 2px}
+.gauge .tgt{position:absolute;left:3px;right:14px;height:0;border-top:2px dashed var(--focus)}
+.gauge .nom{position:absolute;left:0;width:6px;height:2px;background:var(--ink-2)}
+.rodside{display:flex;flex-direction:column;gap:8px;min-width:0}
+.rodpos{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.rodpos b{font:600 30px/1 "Barlow Condensed",Barlow,sans-serif;font-variant-numeric:tabular-nums}
+.rodpos span{font-size:13px;color:var(--ink-2)}
+.rodbtns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.rodbtns button{border:1px solid var(--rule);background:var(--well);border-radius:4px;padding:11px 6px;font:600 17px "Barlow Condensed",Barlow,sans-serif;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none}
+.rodbtns button:active,.rodbtns button.held{background:var(--ink);color:var(--panel)}
+.rodbtns button:disabled{opacity:.45;cursor:not-allowed}
+.rangewrap{display:flex;flex-direction:column}
+.rangewrap .ends{display:flex;justify-content:space-between;font-size:12px;color:var(--ink-2)}
+.rodmsg{margin:0;font-size:13.5px;color:var(--ink-2);min-height:2.6em}
+.rodmsg.warn{color:var(--hot)}
+
+.ctl{margin:12px 0}
+.ctl label{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:14px}
+.ctl label b{font:600 17px "Barlow Condensed",Barlow,sans-serif;font-variant-numeric:tabular-nums}
+.ctl .sub{font-size:12.5px;color:var(--ink-2);margin-top:2px}
+input[type=range]{width:100%;margin:4px 0 0;accent-color:var(--ink);height:28px}
+.pumps{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:6px}
+.pumps button{border:1px solid var(--rule);background:var(--well);border-radius:4px;padding:7px 0 6px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:13px}
+.pumps button i{width:10px;height:10px;border-radius:50%;background:var(--lamp-off)}
+.pumps button[aria-pressed="true"] i{background:var(--feed);box-shadow:0 0 6px var(--feed)}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.btn{border:1px solid var(--rule);background:var(--well);border-radius:4px;padding:10px 8px;cursor:pointer;font:600 16px "Barlow Condensed",Barlow,sans-serif}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.scram{grid-column:1/-1;background:var(--scram);border-color:var(--scram);color:#fff;font-size:21px;padding:13px 8px;letter-spacing:.02em;box-shadow:inset 0 -3px 0 rgba(0,0,0,.25)}
+.speed{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:14px;color:var(--ink-2)}
+.speed button{border:1px solid var(--rule);background:var(--well);border-radius:999px;padding:3px 12px;cursor:pointer}
+.speed button[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.rho{margin:10px 0 0;display:grid;grid-template-columns:1fr auto;gap:2px 10px;font-size:14px;font-variant-numeric:tabular-nums}
+.rho dt{color:var(--ink-2)} .rho dd{margin:0;text-align:right;font-weight:600}
+.rho .sum{border-top:1px solid var(--rule);padding-top:3px}
+
+.xsopen{width:100%;margin-top:4px}
+canvas.plot{display:block;width:100%;height:150px;background:var(--well);border:1px solid var(--rule);border-radius:4px}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;color:var(--ink-2);margin-top:5px}
+.legend i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:5px}
+canvas.fis{display:block;width:100%;aspect-ratio:16/9;background:#0b1418;border-radius:4px}
+.note{font-size:13px;color:var(--ink-2);margin:6px 0 0}
+details{margin-top:18px;border-top:1px solid var(--rule);padding-top:10px;font-size:14px}
+summary{cursor:pointer;font:600 18px "Barlow Condensed",Barlow,sans-serif}
+details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
+
+/* cross-section viewer */
+.xs{position:fixed;inset:0;z-index:40;display:flex;align-items:flex-end;justify-content:center;background:rgba(4,9,11,.55);
+  padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
+.xs[hidden]{display:none}
+.xs-sheet{background:var(--panel);color:var(--ink);width:min(1080px,100%);max-height:calc(100% - 28px);overflow-y:auto;border-radius:14px 14px 0 0;box-shadow:0 -8px 30px rgba(0,0,0,.35)}
+@media (min-width:900px){.xs{align-items:center;padding:24px}.xs-sheet{border-radius:10px;max-height:100%}}
+.xs-head{position:sticky;top:0;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 8px 8px 14px;background:var(--panel);border-bottom:1px solid var(--rule)}
+.crumbs{display:flex;align-items:center;flex-wrap:wrap;gap:2px;min-width:0}
+.crumbs button{background:none;border:0;padding:6px 3px;font:600 17px "Barlow Condensed",Barlow,sans-serif;color:var(--focus);cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.crumbs button[aria-current]{color:var(--ink);text-decoration:none;cursor:default}
+.crumbs span{color:var(--ink-2);margin:0 4px}
+.xs-close{flex:none;background:var(--well);border:1px solid var(--rule);border-radius:4px;width:40px;height:40px;font-size:22px;line-height:1;cursor:pointer}
+.xs-body{display:grid;grid-template-columns:1fr;gap:16px;padding:14px 14px 22px}
+@media (min-width:760px){.xs-body{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr)}}
+.xs-draw{min-width:0}
+.xs-mode{display:flex;gap:6px;margin-bottom:8px}
+.xs-mode button{border:1px solid var(--rule);background:var(--well);border-radius:999px;padding:4px 12px;font-size:14px;cursor:pointer}
+.xs-mode button[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.xs-svg{display:block;width:100%;height:auto;max-height:62vh}
+.xs-svg *{vector-effect:non-scaling-stroke}
+.xs-svg .xs-hit{cursor:pointer}
+.xs-svg .hx{stroke:var(--xs-line);stroke-width:.8px}
+.xs-svg .xs-hit:hover .hx,.xs-svg .xs-hit:hover .pin{stroke:var(--focus);stroke-width:2px}
+.xs-svg .hx.sel{stroke:var(--focus);stroke-width:3px}
+.xs-svg .dot-reg{fill:#ffc83a;stroke:#1c2520;stroke-width:.8px}
+.xs-svg .dot-sd{fill:#20282c;stroke:#e6eee8;stroke-width:.6px}
+.xs-svg .xs-barrel{fill:none;stroke:var(--xs-line);stroke-width:1.5px;stroke-dasharray:5 4}
+.xs-svg .xs-water{fill:var(--water);stroke:var(--xs-line);stroke-width:1px}
+.xs-svg .pin{stroke:rgba(60,40,20,.45);stroke-width:.6px}
+.xs-svg .pin.gd{stroke:var(--gd);stroke-width:2.2px}
+.xs-svg .sel{stroke:var(--focus) !important;stroke-width:3px !important}
+.xs-svg .guide{fill:var(--water);stroke:var(--steel);stroke-width:1.8px}
+.xs-svg .absorber{fill:var(--abs);stroke:var(--steel);stroke-width:1px}
+.xs-svg .ctube{fill:var(--gap);stroke:var(--steel);stroke-width:1.8px}
+.xs-svg .cross{stroke:var(--ink-2);stroke-width:1px}
+.xs-svg .clad{fill:var(--clad)}
+.xs-svg .gap{fill:var(--gap)}
+.xs-svg .pellet{stroke:rgba(0,0,0,.25);stroke-width:.6px}
+.xs-svg .pellet.gdring{stroke:var(--gd);stroke-width:2.5px}
+.xs-svg .hole{fill:var(--gap)}
+.xs-svg .gtube{fill:var(--steel)}
+.xs-svg .aclad{fill:var(--steel)}
+.xs-svg .b4c{fill:var(--abs)}
+.xs-svg .lead{fill:none;stroke:var(--ink-2);stroke-width:1px}
+.xs-svg .lbl{font:500 1.05px Barlow,"Segoe UI",sans-serif;fill:var(--ink)}
+.xs-chart{display:block;width:100%;height:auto;margin-top:10px;background:var(--well);border:1px solid var(--rule);border-radius:4px}
+.xs-chart .z-hole{fill:var(--ink-2);opacity:.12}
+.xs-chart .z-fuel{fill:#f07d22;opacity:.16}
+.xs-chart .z-gap{fill:#9fd0e8;opacity:.6}
+.xs-chart .z-clad{fill:var(--steel);opacity:.45}
+.xs-chart .z-water{fill:var(--water);opacity:.9}
+.xs-chart .gridl{stroke:var(--rule);stroke-width:1}
+.xs-chart .ax{font:11px Barlow,"Segoe UI",sans-serif;fill:var(--ink-2)}
+.xs-chart .ax.strong{fill:var(--ink);font-weight:600}
+.xs-chart .curve{fill:none;stroke:var(--hot);stroke-width:2.4;stroke-linejoin:round}
+.xs-chart .pt{fill:var(--hot)}
+.xs-legend{display:flex;flex-wrap:wrap;align-items:center;gap:5px 14px;margin-top:8px;font-size:13px;color:var(--ink-2)}
+.xs-legend span{display:inline-flex;align-items:center;gap:6px}
+.xs-legend .ramp,.xs-legend .heat{width:84px;height:10px;border-radius:2px}
+.xs-legend .ramp{background:linear-gradient(90deg,#fbf0c9,#f6c15b,#ea7b2c,#c2402a,#7d1c1c)}
+.xs-legend .heat{background:linear-gradient(90deg,#7a2412,#c8401c,#f07d22,#ffc94a,#fff6d8)}
+.xs-legend i{display:inline-block;width:12px;height:12px}
+.xs-legend .dot{border-radius:50%}
+.xs-legend .dot.reg{background:#ffc83a;border:1px solid #1c2520}
+.xs-legend .dot.sd{background:#20282c;border:1px solid #e6eee8}
+.xs-legend .sw{border-radius:3px}
+.xs-legend .ring-gd{border:2.5px solid var(--gd);border-radius:50%;background:#f6c15b}
+.xs-legend .guide{border:2px solid var(--steel);border-radius:50%;background:var(--water)}
+.xs-legend .abs{border-radius:50%;background:var(--abs)}
+.xs-info h2{margin:0 0 4px;font:600 24px/1.1 "Barlow Condensed",Barlow,sans-serif}
+.xs-info p{margin:0 0 12px;color:var(--ink-2);max-width:60ch}
+.xs-info dl{margin:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:0;font-size:14px;font-variant-numeric:tabular-nums}
+.xs-info dt,.xs-info dd{padding:6px 0;border-top:1px solid var(--rule)}
+.xs-info dt{color:var(--ink-2);padding-right:10px}
+.xs-info dd{margin:0;font-weight:600}
+@media (prefers-reduced-motion: reduce){*{scroll-behavior:auto}}
+
+</style>
+</head>
+<body>
+<div class="app">
+  <section class="stage" id="stage" aria-label="3D plant view">
+    <canvas id="scene"></canvas>
+    <div class="labels" id="labels"></div>
+    <nav class="views" aria-label="Camera views">
+      <button type="button" data-view="overview" aria-pressed="true">Whole plant</button>
+      <button type="button" data-view="core">Reactor core</button>
+      <button type="button" data-view="steam">Steam generators</button>
+      <button type="button" data-view="turbine">Turbine hall</button>
+    </nav>
+    <div class="trip" id="trip" hidden></div>
+    <div class="info" id="info" hidden>
+      <button type="button" class="x" id="infoClose" aria-label="Close">×</button>
+      <h3 id="infoTitle"></h3>
+      <p id="infoText"></p>
+      <div class="live" id="infoLive"></div>
+      <button type="button" class="go" id="infoGo" hidden></button>
+    </div>
+    <p class="hint">Drag to look around, pinch or scroll to zoom. Tap the reactor, a fuel assembly or a control rod to open its cross-section.</p>
+  </section>
+
+  <aside class="panel">
+    <div class="head">
+      <h1>VVER-1200 plant simulator</h1>
+      <p>Drive the control rods, trip pumps, scram the reactor and follow the heat all the way to the grid.</p>
+    </div>
+    <div class="pipes-key" aria-label="Pipe colours">
+      <span><i style="background:var(--hot)"></i>Hot leg</span>
+      <span><i style="background:var(--cold)"></i>Cold leg</span>
+      <span><i style="background:var(--steam)"></i>Steam</span>
+      <span><i style="background:var(--feed)"></i>Feedwater</span>
+      <span><i style="background:var(--cw)"></i>Cooling water</span>
+    </div>
+
+    <div class="big">
+      <div class="meter th"><div class="k">Thermal power</div><div class="v"><span id="pth">3200</span><small>MWt</small></div><div class="bar"><i id="pthBar"></i></div></div>
+      <div class="meter el"><div class="k">Electrical power</div><div class="v"><span id="pe">1200</span><small>MWe</small></div><div class="bar"><i id="peBar"></i></div></div>
+    </div>
+    <div class="small">
+      <div><span class="k">Reactivity</span><span class="v" id="rho">0 pcm</span></div>
+      <div><span class="k">Reactor period</span><span class="v" id="per">∞</span></div>
+      <div><span class="k">Core flow</span><span class="v" id="flow">100 %</span></div>
+      <div><span class="k">Core inlet</span><span class="v" id="tin">298 °C</span></div>
+      <div><span class="k">Core outlet</span><span class="v" id="tout">325 °C</span></div>
+      <div><span class="k">Fuel average</span><span class="v" id="tf">900 °C</span></div>
+      <div><span class="k">Turbine speed</span><span class="v" id="rpm">3000 rpm</span></div>
+      <div><span class="k">Decay heat</span><span class="v" id="dh">6.5 %</span></div>
+      <div><span class="k">Boric acid</span><span class="v" id="bor">600 ppm</span></div>
+    </div>
+    <div class="logm">
+      <div class="row"><span>Neutron power, log scale</span><b id="npow">100 %</b></div>
+      <div class="track"><i id="nbar"></i></div>
+      <div class="scale"><span>10⁻⁶ %</span><span>10⁻⁴ %</span><span>10⁻² %</span><span>1 %</span><span>100 %</span></div>
+    </div>
+
+    <div class="lamps">
+      <div class="lamp" id="lCrit" style="--c:#43c46f"><i></i>Reactor critical</div>
+      <div class="lamp" id="lAZ" style="--c:#ff3b2f"><i></i>Emergency protection</div>
+      <div class="lamp" id="lGrid" style="--c:#ffc83a"><i></i>Generator on grid</div>
+      <div class="lamp" id="lBlock" style="--c:#ff9d2e"><i></i>Rod withdrawal blocked</div>
+    </div>
+
+    <section class="block">
+      <h2>Control rods</h2>
+      <div class="rodctl">
+        <div class="gauge" aria-hidden="true">
+          <div class="core"></div>
+          <div class="rod" id="gRod"></div>
+          <div class="sd" id="gSd"></div>
+          <div class="tgt" id="gTgt"></div>
+          <div class="nom" id="gNom"></div>
+        </div>
+        <div class="rodside">
+          <div class="rodpos"><b id="rodPos">70 %</b><span>regulating group, % of core height (100 % = fully withdrawn)</span></div>
+          <div class="rodbtns">
+            <button type="button" id="rodUp" aria-label="Raise rods. Hold to move, tap for a 5 percent step">▲ Raise</button>
+            <button type="button" id="rodDn" aria-label="Lower rods. Hold to move, tap for a 5 percent step">▼ Lower</button>
+          </div>
+          <div class="rangewrap">
+            <input type="range" id="rodSet" min="0" max="100" step="1" value="70" aria-label="Regulating group target position, percent of core height">
+            <div class="ends"><span>Bottom</span><span id="rodTgtTxt">Target 70 %</span><span>Top</span></div>
+          </div>
+        </div>
+      </div>
+      <p class="rodmsg" id="rodMsg">Hold Raise or Lower to drive the rods, or tap for a 5 % step.</p>
+
+      <div class="ctl">
+        <label for="boron">Boric acid in coolant <b id="boronVal">600 ppm</b></label>
+        <input type="range" id="boron" min="450" max="750" step="5" value="600">
+        <div class="sub" id="boronSub">Slow chemical control, about −12 pcm per ppm.</div>
+      </div>
+      <div class="ctl">
+        <label>Main coolant pumps</label>
+        <div class="pumps" id="pumps"></div>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn scram" id="scram">Scram (АЗ)</button>
+        <button type="button" class="btn" id="turb">Trip turbine</button>
+        <button type="button" class="btn" id="resetTrip" disabled>Reset protection</button>
+        <button type="button" class="btn" id="resetAll" style="grid-column:1/-1">Return to full power</button>
+      </div>
+      <div class="speed">Plant time
+        <button type="button" data-speed="1" aria-pressed="false">1×</button>
+        <button type="button" data-speed="5" aria-pressed="true">5×</button>
+        <button type="button" data-speed="20" aria-pressed="false">20×</button>
+      </div>
+      <dl class="rho" id="rhoList"></dl>
+    </section>
+
+    <section class="block">
+      <h2>Cross-sections</h2>
+      <p class="note">Open the core map, then tap through to any assembly and any rod. Values update live with the reactor.</p>
+      <button type="button" class="btn xsopen" id="xsOpen">Open core cross-section</button>
+    </section>
+
+    <section class="block">
+      <h2>Power history</h2>
+      <canvas class="plot" id="plot"></canvas>
+      <div class="legend"><span><i style="background:var(--hot)"></i>Thermal, MWt</span><span><i style="background:var(--steam)"></i>Electrical, MWe</span><span id="plotSpan"></span></div>
+    </section>
+
+    <section class="block">
+      <h2>Inside a fuel pellet</h2>
+      <canvas class="fis" id="fis"></canvas>
+      <p class="note">Orange: U-235, grey: U-238, white: neutrons. The dark bar is an absorber rod that reaches down as you lower the rods. At full power the real core splits about 10²⁰ nuclei every second.</p>
+    </section>
+
+    <details>
+      <summary>How this model works</summary>
+      <p>Reactor power comes from point kinetics with six delayed-neutron groups for U-235 (β = 650 pcm, Λ = 20 µs) and a weak neutron source. Feedback is Doppler (−2.2 pcm/K on average fuel temperature) and moderator (−25 pcm/K on average coolant temperature), worth about 2000 pcm between hot zero power and full power.</p>
+      <p>Heat flows through two lumps, fuel and coolant, to steam generators held at 7.0 MPa (285.8 °C). Decay heat is three exponential groups totalling 6.5 % of fission power. Electrical output is 37.5 % of the heat leaving the steam generators, so 3200 MWt gives 1200 MWe.</p>
+      <p>Interlocks follow VVER practice in simplified form: rod withdrawal is blocked below a 20 s period, above 104 % power or above 330 °C core outlet, and the reactor scrams on 112 % power, 335 °C outlet, a 10 s period in the startup range, or loss of two coolant pumps.</p>
+      <p>The cross-sections use the TVS-2006 assembly geometry. Rod temperatures come from a steady conduction solution with temperature-dependent UO₂ conductivity (Fink 2000), a 6000 W/m²·K gap and Zr-1%Nb cladding, at the mid-plane with an axial factor of 1.3. The loading pattern and control cluster map are illustrative, not a real VVER-1200 core design.</p>
+      <p>This is a teaching model, not plant-simulator practice. Real VVER analysis couples 3D nodal neutronics to system codes such as KORSAR or RELAP. The regulating group is worth 3000 pcm here so rods alone can cover the power defect; real plants share that job with boric acid. Rods move at 1 % of core height per second, about twice real speed. The turbine spin is slowed for viewing; on the grid it always turns at 3000 rpm.</p>
+    </details>
+  </aside>
+</div>
+
+<div class="xs" id="xs" hidden role="dialog" aria-modal="true" aria-labelledby="xsTitle">
+  <div class="xs-sheet">
+    <header class="xs-head">
+      <nav class="crumbs" id="xsCrumbs" aria-label="Cross-section level"></nav>
+      <button type="button" class="xs-close" id="xsClose" aria-label="Close cross-section">×</button>
+    </header>
+    <div class="xs-body">
+      <div class="xs-draw">
+        <div class="xs-mode" id="xsMode">
+          <button type="button" data-mode="power" aria-pressed="true">Power</button>
+          <button type="button" data-mode="loading" aria-pressed="false">Fuel loading</button>
+        </div>
+        <div id="xsDraw"></div>
+        <div id="xsChart" hidden></div>
+        <div class="xs-legend" id="xsLegend"></div>
+      </div>
+      <div class="xs-info">
+        <h2 id="xsTitle"></h2>
+        <p id="xsLead"></p>
+        <dl id="xsFacts"></dl>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/*
+ * VVER-1200 teaching model.
+ * Point kinetics (6 delayed groups, U-235) + two-lump thermal model + simple secondary side.
+ * Also: core and fuel assembly layouts, assembly power shares and a fuel rod
+ * radial temperature solver. Runs in the browser (window.VVERPhysics) and in Node (require).
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.VVERPhysics = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  /* ---------- kinetics data (U-235 thermal fission) ---------- */
+  const BETA = [2.15e-4, 1.424e-3, 1.274e-3, 2.568e-3, 7.48e-4, 2.73e-4];
+  const LAMB = [0.0124, 0.0305, 0.111, 0.301, 1.14, 3.01];
+  const BT = BETA.reduce((a, b) => a + b, 0);
+
+  /* ---------- plant and model constants ---------- */
+  const C = {
+    GEN: 2e-5,              // prompt neutron generation time, s
+    P_NOM: 3200,            // MWt
+    PE_NOM: 1200,           // MWe gross
+    TF0: 900,               // core-average fuel temperature at 100 %, °C (lumped)
+    TM0: 311.6,             // core-average coolant temperature at 100 %, °C
+    TS: 285.8,              // saturation temperature at 7.0 MPa, °C
+    DT_CORE: 26.8,          // core ΔT at 100 % power and flow, K
+    P_PRIMARY: 16.2, P_STEAM: 7.0,
+    W_REG: 3000,            // regulating group worth, pcm (exaggerated, see README)
+    W_SD: 9000,             // shutdown banks worth, pcm
+    A_D: -2.2,              // Doppler coefficient, pcm/K
+    A_M: -25,               // moderator temperature coefficient, pcm/K
+    B0: 600, DB: -12,       // boric acid reference, ppm; worth pcm/ppm
+    X0: 0.30,               // regulating group insertion at 100 % power (70 % of core height)
+    ROD_SPEED: 0.01,        // fraction of core height per second (real VVER ≈ 0.005)
+    SD_DROP_ACC: 1.4, SD_DROP_VMAX: 0.45, SD_OUT_SPEED: 0.008,
+    BORON_RATE: 1.5,        // ppm/s
+    DH_A: [0.015, 0.02, 0.03], DH_T: [3, 40, 1000],
+    SRC: 3e-4,              // neutron source term, relative units per s
+    TRIP_POWER: 1.12, TRIP_TOUT: 335, TRIP_PERIOD: 10,
+    BLOCK_PERIOD: 20, BLOCK_POWER: 1.04, BLOCK_TOUT: 330,
+    N_FA: 163, PINS_PER_FA: 312, ACTIVE_H: 3.73, KZ_MID: 1.3,
+    ETA: 1200 / 3200,
+    BETA_TOTAL: BT
+  };
+  C.N_RODS = C.N_FA * C.PINS_PER_FA;
+  C.DH_SUM = C.DH_A.reduce((a, b) => a + b, 0);
+  const RF = C.TF0 - C.TM0, CF = 5 / RF, KSG = 1 / (C.TM0 - C.TS), CM = 0.3;
+
+  /** integral rod worth, S-curve, x = fraction inserted */
+  const worth = x => x - Math.sin(2 * Math.PI * x) / (2 * Math.PI);
+
+  function createReactor() {
+    const S = {};
+
+    function reset() {
+      Object.assign(S, {
+        n: 1, C: BETA.map((b, i) => b / (C.GEN * LAMB[i])), D: C.DH_A.slice(),
+        Tf: C.TF0, Tm: C.TM0,
+        rodX: C.X0, rodTarget: C.X0, sdX: 0, sdV: 0,
+        scram: false, trip: '', block: '',
+        boron: C.B0, boronTarget: C.B0,
+        pumps: [true, true, true, true], flow: 1,
+        Ps: 1, online: true, rpm: 3000,
+        inv: 0, period: Infinity, rho: 0, parts: { rods: 0, boron: 0, dop: 0, mod: 0 },
+        Pth: 1, qsg: 1, t: 0
+      });
+    }
+
+    const regX = () => Math.max(S.rodX, S.sdX);
+    const coreDT = () => Math.min(C.DT_CORE * S.Pth / Math.max(S.flow, 0.04), 120);
+    const coreOut = () => S.Tm + coreDT() / 2;
+    const coreIn = () => S.Tm - coreDT() / 2;
+    const decayHeat = () => S.D[0] + S.D[1] + S.D[2];
+    const pumpsOn = () => S.pumps.filter(Boolean).length;
+    const onGrid = () => S.online && S.rpm >= 2999;
+    const rodHeight = () => (1 - regX()) * 100;
+    const targetHeight = () => (1 - S.rodTarget) * 100;
+
+    function scram(reason) {
+      if (S.scram) return;
+      S.scram = true; S.trip = reason || 'Scram'; S.online = false; S.sdV = 0; S.rodTarget = 1;
+    }
+    function resetProtection() {
+      if (!S.scram) return;
+      S.scram = false; S.trip = '';
+      S.rodX = Math.max(S.rodX, S.sdX); S.rodTarget = S.rodX;
+    }
+    /** h: target position in % of core height, 100 = fully withdrawn */
+    function setRodHeight(h) { S.rodTarget = clamp(1 - h / 100, 0, 1); }
+    function holdRods() { S.rodTarget = S.rodX; }
+    function startTurbine() { if (!S.scram && S.Pth > 0.08) { S.online = true; return true; } return false; }
+    function tripTurbine() { S.online = false; }
+
+    function step(dt) {
+      // regulating group drive with interlocks on withdrawal
+      const wantUp = S.rodTarget < S.rodX - 1e-9;
+      let block = '';
+      if (wantUp) {
+        if (S.scram) block = 'Rods held in by emergency protection';
+        else if (S.sdX > 0.001) block = 'Waiting for the shutdown banks to withdraw';
+        else if (S.period > 0 && S.period < C.BLOCK_PERIOD) block = 'Withdrawal blocked: period below 20 s';
+        else if (S.Pth > C.BLOCK_POWER) block = 'Withdrawal blocked: power above 104 %';
+        else if (coreOut() > C.BLOCK_TOUT) block = 'Withdrawal blocked: core outlet above 330 °C';
+      }
+      S.block = block;
+      if (!block) S.rodX += clamp(S.rodTarget - S.rodX, -C.ROD_SPEED * dt, C.ROD_SPEED * dt);
+
+      // shutdown banks: gravity drop on scram, slow withdrawal after reset
+      if (S.scram) {
+        S.sdV = Math.min(S.sdV + C.SD_DROP_ACC * dt, C.SD_DROP_VMAX);
+        S.sdX = Math.min(1, S.sdX + S.sdV * dt);
+        if (S.sdX >= 1) { S.rodX = 1; S.rodTarget = 1; }
+      } else if (S.sdX > 0) {
+        S.sdX = Math.max(0, S.sdX - C.SD_OUT_SPEED * dt);
+      }
+
+      S.boron += clamp(S.boronTarget - S.boron, -C.BORON_RATE * dt, C.BORON_RATE * dt);
+
+      const on = pumpsOn(), fT = Math.max(on / 4, 0.04);
+      S.flow += (fT - S.flow) * dt / (fT < S.flow ? 8 : 4);
+
+      // reactivity, pcm
+      const pr = -C.W_REG * (worth(regX()) - worth(C.X0)) - C.W_SD * worth(S.sdX);
+      const pb = C.DB * (S.boron - C.B0), pd = C.A_D * (S.Tf - C.TF0), pm = C.A_M * (S.Tm - C.TM0);
+      S.rho = pr + pb + pd + pm;
+      S.parts = { rods: pr, boron: pb, dop: pd, mod: pm };
+      const r = S.rho * 1e-5;
+
+      // point kinetics, implicit in n (stiff), implicit precursors
+      let src = 0;
+      for (let i = 0; i < 6; i++) src += LAMB[i] * S.C[i];
+      S.n = (S.n + dt * (src + C.SRC)) / (1 - dt * (r - BT) / C.GEN);
+      if (S.n < 1e-12) S.n = 1e-12;
+      for (let i = 0; i < 6; i++) S.C[i] = (S.C[i] + dt * BETA[i] / C.GEN * S.n) / (1 + dt * LAMB[i]);
+      for (let i = 0; i < 3; i++) S.D[i] += (C.DH_A[i] * S.n - S.D[i]) * dt / C.DH_T[i];
+
+      // fuel and coolant lumps
+      const Pth = S.n * (1 - C.DH_SUM) + decayHeat();
+      const qfc = (S.Tf - S.Tm) / RF;
+      S.Tf += (Pth - qfc) * dt / CF;
+      const hx = Math.pow(Math.max(S.flow, 0.04), 0.8);
+      const qsg = Math.max(0, KSG * hx * (S.Tm - C.TS));
+      S.Tm += (qfc - qsg) * dt / CM;
+      S.Pth = Pth; S.qsg = qsg;
+
+      // turbine-generator
+      if (S.online) {
+        if (S.rpm < 3000) S.rpm = Math.min(3000, S.rpm + 60 * dt);
+        const tgt = S.rpm >= 2999 ? qsg : 0;
+        S.Ps += (tgt - S.Ps) * dt / 3;
+      } else {
+        S.Ps += (0 - S.Ps) * Math.min(1, dt / 0.5);
+        S.rpm = Math.max(0, S.rpm - (S.rpm * 0.004 + 1.5) * dt);
+      }
+
+      // emergency protection
+      if (!S.scram) {
+        if (Pth > C.TRIP_POWER) scram('Scram: power above 112 %');
+        else if (coreOut() > C.TRIP_TOUT) scram('Scram: core outlet above 335 °C');
+        else if (on <= 2 && S.n > 0.3) scram('Scram: two or more coolant pumps lost');
+      }
+      S.t += dt;
+    }
+
+    /** advance the model by simDt seconds of plant time */
+    function advance(simDt) {
+      if (!(simDt > 0)) return;
+      const N = Math.max(1, Math.ceil(simDt / (1 / 600))), h = simDt / N, ln0 = Math.log(S.n);
+      for (let i = 0; i < N; i++) step(h);
+      const dl = (Math.log(S.n) - ln0) / simDt;
+      S.inv += (dl - S.inv) * Math.min(1, simDt / 0.8);
+      S.period = Math.abs(S.inv) < 1e-3 ? Infinity : 1 / S.inv;
+      // period protection works in the source and intermediate ranges
+      if (!S.scram && S.period > 0 && S.period < C.TRIP_PERIOD && S.n > 1e-4 && S.n < 0.1) {
+        scram('Scram: reactor period below 10 s');
+      }
+    }
+
+    reset();
+    return {
+      S, reset, step, advance, scram, resetProtection, setRodHeight, holdRods,
+      startTurbine, tripTurbine, regX, coreDT, coreIn, coreOut, decayHeat, pumpsOn, onGrid,
+      rodHeight, targetHeight
+    };
+  }
+
+  /* ---------- core layout: 163 hexagonal assemblies ---------- */
+  function buildCore() {
+    const cells = [];
+    for (let q = -7; q <= 7; q++) for (let r = -7; r <= 7; r++) {
+      const s = -q - r;
+      if (Math.abs(s) > 7) continue;
+      const big = [Math.abs(q), Math.abs(r), Math.abs(s)].filter(v => v === 7).length;
+      if (big >= 2) continue;                                   // drop the 6 corners: 169 - 6 = 163
+      cells.push({ q, r, s, ring: Math.max(Math.abs(q), Math.abs(r), Math.abs(s)) });
+    }
+    // number row by row, top to bottom, left to right
+    cells.forEach(c => { c.u = c.q + c.r / 2; c.v = c.r * Math.sqrt(3) / 2; c.rr = Math.hypot(c.u, c.v); });
+    cells.sort((a, b) => (a.r - b.r) || (a.q - b.q));
+    cells.forEach((c, i) => { c.id = i + 1; });
+    // illustrative low-leakage loading: burned fuel on the rim, fresh/once-burned checkerboard inside
+    cells.forEach(c => {
+      if (c.ring >= 6) c.batch = (c.ring === 7 || ((c.q - c.r) % 3 + 3) % 3 === 0) ? 2 : 1;
+      else c.batch = (((c.q - c.r) % 3 + 3) % 3 === 0) ? 0 : (((c.q + 2 * c.r) % 2 + 2) % 2 === 0 ? 1 : 2);
+      if (c.ring === 0) c.batch = 2;
+    });
+    // 121 control clusters, chosen deterministically; every 6th is in the regulating group
+    let seed = 7;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    cells.forEach(c => { c.h = rnd(); c.rodded = false; c.group = null; });
+    cells.slice().sort((a, b) => a.h - b.h).slice(0, 121).forEach((c, i) => {
+      c.rodded = true; c.group = (i % 6 === 0) ? 'reg' : 'sd';
+    });
+    const R = Math.max(...cells.map(c => c.rr)) + 0.5;
+    cells.forEach(c => { c.shape = 1 - 0.45 * Math.pow(c.rr / R, 2); });
+    return { cells, R };
+  }
+
+  const BATCH = [
+    { name: 'Fresh fuel', burnup: 0, factor: 1.10 },
+    { name: 'One cycle in core', burnup: 18, factor: 1.0 },
+    { name: 'Two cycles in core', burnup: 36, factor: 0.86 }
+  ];
+
+  /** relative assembly powers Kq (core average = 1); rods depress power where they are inserted */
+  function assemblyPowers(core, regIns, sdIns) {
+    const raw = core.cells.map(c => {
+      let ins = 0;
+      if (c.rodded) ins = c.group === 'reg' ? regIns : sdIns;
+      return c.shape * BATCH[c.batch].factor * (1 - 0.35 * ins);
+    });
+    const mean = raw.reduce((a, b) => a + b, 0) / raw.length;
+    return raw.map(v => v / mean);
+  }
+
+  /* ---------- fuel assembly: 331 positions = 312 fuel rods + 18 guide channels + 1 central tube ---------- */
+  function buildAssembly() {
+    const pins = [];
+    const dirs = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
+    pins.push({ q: 0, r: 0, ring: 0, side: 0, j: 0, type: 'center' });
+    for (let k = 1; k <= 10; k++) {
+      let q = -k, r = k;                       // start corner, then walk the six sides
+      for (let s = 0; s < 6; s++) {
+        for (let j = 0; j < k; j++) {
+          pins.push({ q, r, ring: k, side: s, j, type: 'fuel' });
+          q += dirs[s][0]; r += dirs[s][1];
+        }
+      }
+    }
+    pins.forEach(p => {
+      if ((p.ring === 3 && p.j === 0) || (p.ring === 5 && (p.j === 2 || p.j === 3))) p.type = 'guide';
+      else if (p.ring === 7 && p.j === 3) p.type = 'gd';
+    });
+    pins.forEach((p, i) => {
+      p.id = i + 1;
+      p.x = 12.75 * (p.q + p.r / 2);
+      p.y = 12.75 * (p.r * Math.sqrt(3) / 2);
+    });
+    // pin power factors: rods near the water gap run a little hotter; normalised over fuel rods
+    const fuel = pins.filter(p => p.type === 'fuel' || p.type === 'gd');
+    fuel.forEach(p => { p.kraw = 0.96 + 0.09 * Math.pow(p.ring / 10, 2); });
+    const m = fuel.reduce((a, p) => a + p.kraw, 0) / fuel.length;
+    fuel.forEach(p => { p.kpin = p.kraw / m; });
+    return pins;
+  }
+  function pinFactor(pin, batch) {
+    if (pin.type === 'gd') return pin.kpin * (batch === 0 ? 0.72 : 0.95);
+    return pin.kpin || 0;
+  }
+
+  /* ---------- fuel rod radial temperatures ---------- */
+  const ROD = {
+    R_CO: 4.55e-3, R_CI: 3.865e-3, R_P: 3.8e-3, R_H: 0.6e-3, PITCH: 12.75e-3,
+    K_CLAD: 17, H_GAP: 6000, T_MELT: 2840
+  };
+  /** UO2 thermal conductivity, 95 % dense (Fink 2000), W/m·K; T in °C */
+  function kUO2(Tc) {
+    const t = (Tc + 273.15) / 1000;
+    return 100 / (7.5408 + 17.692 * t + 3.6142 * t * t) + 6400 / Math.pow(t, 2.5) * Math.exp(-16.35 / t);
+  }
+  /**
+   * q: linear heat rate, W/m; Tcool: bulk coolant, °C; flow: fraction of nominal; gd: gadolinia rod
+   * returns temperatures in °C and a profile [{r (mm), T}] from the pellet centre to the cell edge
+   */
+  function rodProfile(q, Tcool, flow, gd) {
+    q = Math.max(q, 0);
+    const h = Math.max(5000, 34000 * Math.pow(Math.max(flow, 0.04), 0.8));
+    const flux = q / (2 * Math.PI * ROD.R_CO);
+    const Tco = Tcool + flux / h;
+    const Tci = Tco + q / (2 * Math.PI * ROD.K_CLAD) * Math.log(ROD.R_CO / ROD.R_CI);
+    const Tps = Tci + q / (2 * Math.PI * ROD.R_P * ROD.H_GAP);
+    const qv = q / (Math.PI * (ROD.R_P * ROD.R_P - ROD.R_H * ROD.R_H));
+    const kf = gd ? 0.8 : 1;
+    const N = 80, dr = (ROD.R_P - ROD.R_H) / N;
+    const pellet = [{ r: ROD.R_P, T: Tps }];
+    let T = Tps;
+    for (let i = 0; i < N; i++) {
+      const r = ROD.R_P - i * dr;
+      const g = rr => qv / 2 * (rr - ROD.R_H * ROD.R_H / rr);
+      const k1 = kUO2(T) * kf;
+      const Tm = T + g(r) / k1 * dr / 2;
+      const k2 = kUO2(Tm) * kf;
+      T = T + g(r - dr / 2) / k2 * dr;
+      pellet.push({ r: r - dr, T });
+    }
+    const Tc = T;
+    const profile = [{ r: 0, T: Tc }];
+    for (let i = pellet.length - 1; i >= 0; i--) profile.push({ r: pellet[i].r * 1e3, T: pellet[i].T });
+    profile.push({ r: ROD.R_CI * 1e3, T: Tci });
+    for (let i = 1; i <= 6; i++) {
+      const r = ROD.R_CI + (ROD.R_CO - ROD.R_CI) * i / 6;
+      profile.push({ r: r * 1e3, T: Tci - (Tci - Tco) * Math.log(r / ROD.R_CI) / Math.log(ROD.R_CO / ROD.R_CI) });
+    }
+    profile.push({ r: ROD.R_CO * 1e3 + 0.15, T: Tcool + (Tco - Tcool) * 0.25 });
+    profile.push({ r: ROD.R_CO * 1e3 + 0.35, T: Tcool });
+    profile.push({ r: ROD.PITCH / 2 * 1e3, T: Tcool });
+    return { Tc, Tps, Tci, Tco, Tcool, flux, h, profile, q };
+  }
+
+  /** average linear heat rate in the core, W/m, for relative thermal power p */
+  const qAvg = p => p * C.P_NOM * 1e6 / (C.N_RODS * C.ACTIVE_H);
+
+  return {
+    C, BETA, LAMB, worth, createReactor, buildCore, assemblyPowers, BATCH,
+    buildAssembly, pinFactor, ROD, kUO2, rodProfile, qAvg, clamp
+  };
+});
+
+</script>
+<script>
+/* 3D plant view (three.js r128). Builds the scene and exposes update/setView/highlight. */
+(function () {
+  'use strict';
+
+  window.Plant3D = function (opts) {
+    const { canvas, stage, labelsEl, P, R, core, onPick, onView } = opts;
+    const S = R.S, clamp = P.clamp;
+    const lerp = (a, b, t) => a + (b - a) * t;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    /* ---------- renderer, scene, lights ---------- */
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0b1216);
+    scene.fog = new THREE.Fog(0x0b1216, 170, 420);
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 800);
+    scene.add(new THREE.HemisphereLight(0xc8dae8, 0x1b2621, 0.85));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.75);
+    sun.position.set(60, 90, 70); scene.add(sun);
+
+    const Y = new THREE.Vector3(0, 1, 0);
+    const V = (x, y, z) => new THREE.Vector3(x, y, z);
+    const M = (c, o) => new THREE.MeshStandardMaterial(Object.assign({ color: c, metalness: 0.45, roughness: 0.5 }, o || {}));
+    const pickables = [];
+    function add(geo, mat, pos, pick) {
+      const m = new THREE.Mesh(geo, mat);
+      if (pos) m.position.copy(pos);
+      scene.add(m);
+      if (pick) { m.userData.pick = pick; pickables.push(m); }
+      return m;
+    }
+
+    const ground = add(new THREE.PlaneGeometry(600, 600), M(0x121a17, { metalness: 0, roughness: 1 }));
+    ground.rotation.x = -Math.PI / 2;
+    const grid = new THREE.GridHelper(600, 120, 0x2a3a33, 0x1f2b26);
+    grid.position.y = 0.02; scene.add(grid);
+
+    function glowTexture() {
+      const c = document.createElement('canvas'); c.width = c.height = 128;
+      const g = c.getContext('2d'), r = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+      r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.25, 'rgba(255,255,255,.55)'); r.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = r; g.fillRect(0, 0, 128, 128);
+      return new THREE.CanvasTexture(c);
+    }
+    const GLOW = glowTexture();
+
+    /* ---------- pipes: routed with elbows, flow shown by moving arrows ---------- */
+    const ARROWS = (function () {
+      const c = document.createElement('canvas'); c.width = 128; c.height = 120;
+      const g = c.getContext('2d');
+      g.fillStyle = '#000'; g.fillRect(0, 0, 128, 120); g.fillStyle = '#fff';
+      for (let row = 0; row < 3; row++) {
+        const y = 20 + row * 40;
+        g.beginPath();
+        g.moveTo(26, y - 4); g.lineTo(70, y - 4); g.lineTo(70, y - 12); g.lineTo(100, y);
+        g.lineTo(70, y + 12); g.lineTo(70, y + 4); g.lineTo(26, y + 4); g.closePath(); g.fill();
+      }
+      return c;
+    })();
+    const PIPE_STYLE = {
+      hot:   { color: 0x8c2a1f, glow: 0xff6a45, name: 'Hot leg' },
+      cold:  { color: 0x234f7d, glow: 0x6cb8ff, name: 'Cold leg' },
+      surge: { color: 0x8c2a1f, glow: 0x000000, name: 'Surge line' },
+      steam: { color: 0x8a6a12, glow: 0xffd65a, name: 'Main steam' },
+      xover: { color: 0x7a6a3a, glow: 0xfff0b0, name: 'Crossover steam' },
+      feed:  { color: 0x1f6a40, glow: 0x6ae69a, name: 'Feedwater' },
+      cw:    { color: 0x1d5a6e, glow: 0x7fe0ff, name: 'Cooling water' },
+      bus:   { color: 0x6d6450, glow: 0x000000, name: 'Generator busbar' }
+    };
+    const pipes = [];
+    function elbowPath(pts, bend) {
+      const path = new THREE.CurvePath();
+      let prev = pts[0].clone();
+      for (let i = 1; i < pts.length - 1; i++) {
+        const a = pts[i - 1], p = pts[i], b = pts[i + 1];
+        const d1 = p.clone().sub(a), d2 = b.clone().sub(p);
+        const l1 = d1.length(), l2 = d2.length();
+        d1.normalize(); d2.normalize();
+        const r = Math.min(bend, l1 / 2, l2 / 2);
+        const s = p.clone().addScaledVector(d1, -r), e = p.clone().addScaledVector(d2, r);
+        if (prev.distanceTo(s) > 1e-4) path.add(new THREE.LineCurve3(prev.clone(), s));
+        path.add(new THREE.QuadraticBezierCurve3(s, p.clone(), e));
+        prev = e;
+      }
+      path.add(new THREE.LineCurve3(prev, pts[pts.length - 1].clone()));
+      return path;
+    }
+    function pipe(pts, r, kind, o) {
+      o = o || {};
+      const path = elbowPath(pts.map(p => (p.isVector3 ? p : V(p[0], p[1], p[2]))), o.bend || Math.max(r * 2.2, 0.6));
+      const L = path.getLength();
+      const geo = new THREE.TubeGeometry(path, Math.min(700, Math.max(24, Math.round(L * 5))), r, 16, false);
+      const st = PIPE_STYLE[kind];
+      let tex = null;
+      if (o.arrows !== false) {
+        tex = new THREE.CanvasTexture(ARROWS);
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        tex.repeat.set(Math.max(1, Math.round(L / Math.max(1.4, r * 5))), 1);
+      }
+      const mat = M(st.color, { metalness: 0.35, roughness: 0.42, emissive: st.glow, emissiveMap: tex, emissiveIntensity: tex ? 1 : 0 });
+      const mesh = add(geo, mat, null, 'pipe');
+      mesh.userData.kind = kind; mesh.userData.loop = o.loop;
+      const rec = { mesh, mat, tex, kind, L, cycle: tex ? L / tex.repeat.x : 1 };
+      pipes.push(rec);
+      return rec;
+    }
+
+    /* ---------- containment ---------- */
+    const contMat = new THREE.MeshBasicMaterial({ color: 0x9fb6c4, transparent: true, opacity: 0.05, side: THREE.DoubleSide, depthWrite: false });
+    add(new THREE.CylinderGeometry(16, 16, 26, 64, 1, true), contMat, V(0, 13, 0));
+    add(new THREE.SphereGeometry(16, 48, 16, 0, Math.PI * 2, 0, Math.PI / 2), contMat, V(0, 26, 0));
+    const ringMat = new THREE.LineBasicMaterial({ color: 0x5d7684, transparent: true, opacity: 0.45 });
+    [0.1, 13, 26].forEach(h => {
+      const pts = [];
+      for (let i = 0; i <= 64; i++) { const a = i / 64 * Math.PI * 2; pts.push(V(16 * Math.sin(a), h, 16 * Math.cos(a))); }
+      scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), ringMat));
+    });
+
+    /* ---------- reactor vessel, cut away toward +z ---------- */
+    const steel = M(0x8b969c, { side: THREE.DoubleSide, metalness: 0.65, roughness: 0.42 });
+    const GAP0 = 0.3 * Math.PI, GAPL = 1.4 * Math.PI;
+    add(new THREE.CylinderGeometry(2.25, 2.25, 10, 48, 1, true, GAP0, GAPL), steel, V(0, 8, 0), 'vessel');
+    add(new THREE.SphereGeometry(2.25, 40, 12, 0.8 * Math.PI, GAPL, Math.PI / 2, Math.PI / 2), steel, V(0, 3, 0), 'vessel').scale.y = 0.6;
+    add(new THREE.SphereGeometry(2.25, 40, 12, 0.8 * Math.PI, GAPL, 0, Math.PI / 2), steel, V(0, 13, 0), 'vessel').scale.y = 0.6;
+    add(new THREE.CylinderGeometry(1.98, 1.98, 6.2, 40, 1, true, GAP0, GAPL), M(0x6f7a80, { side: THREE.DoubleSide }), V(0, 5.9, 0), 'vessel');
+
+    const waterMat = new THREE.MeshBasicMaterial({ color: 0x2c8cff, transparent: true, opacity: 0.08, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    add(new THREE.CylinderGeometry(2.15, 2.15, 9.6, 40, 1, false), waterMat, V(0, 7.9, 0));
+    const coreGlowMat = new THREE.MeshBasicMaterial({ color: 0x3aa4ff, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    add(new THREE.CylinderGeometry(1.95, 1.95, 4.6, 40, 1, false), coreGlowMat, V(0, 5.5, 0));
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0x45aaff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    halo.position.set(0, 5.5, 0.4); halo.scale.set(8.5, 8.5, 1); scene.add(halo);
+    const blueLight = new THREE.PointLight(0x4aa8ff, 3, 14, 1.6);
+    blueLight.position.set(0, 5.5, 1.2); scene.add(blueLight);
+
+    /* ---------- core: 163 assemblies, 121 control clusters ---------- */
+    const PITCH = 0.236, H = 3.75, CORE_B = 3.6;
+    core.cells.forEach(c => { c.x = PITCH * c.u; c.z = PITCH * c.v; c.r3 = Math.hypot(c.x, c.z); });
+    const inGap = c => c.r3 > 0.3 && Math.abs(Math.atan2(c.x, c.z)) < 0.3 * Math.PI;
+    const fuelCells = core.cells.filter(c => !inGap(c));
+    const rodded = core.cells.filter(c => c.rodded);
+    const mtx = new THREE.Matrix4(), qI = new THREE.Quaternion(), one = V(1, 1, 1), tmpC = new THREE.Color();
+    const hexR = PITCH / Math.sqrt(3) * 0.94;
+    const fuelMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(hexR, hexR, H, 6), M(0xffffff, { metalness: 0.3, roughness: 0.55 }), fuelCells.length);
+    fuelCells.forEach((c, i) => {
+      mtx.compose(V(c.x, CORE_B + H / 2, c.z), qI, one);
+      fuelMesh.setMatrixAt(i, mtx); fuelMesh.setColorAt(i, tmpC.set(0x7d8287));
+    });
+    fuelMesh.userData.pick = 'fuel'; pickables.push(fuelMesh); scene.add(fuelMesh);
+
+    const rodMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.075, 0.075, H, 10), M(0x2e3438, { metalness: 0.6, roughness: 0.35 }), rodded.length);
+    const tipMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.09, 0.09, 0.14, 10), new THREE.MeshBasicMaterial({ color: 0xffc83a }), rodded.length);
+    const shaftMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.025, 0.025, 1, 6), M(0xa3adb2), rodded.length);
+    const rodProxy = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.17, 0.17, H, 6), new THREE.MeshBasicMaterial(), rodded.length);
+    rodProxy.visible = false; rodProxy.userData.pick = 'rod';
+    scene.add(rodMesh, tipMesh, shaftMesh, rodProxy); pickables.push(rodProxy);
+    const crdmCells = rodded.filter(c => !inGap(c));
+    const crdm = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.075, 0.075, 3, 8), M(0x9aa4a9), crdmCells.length);
+    crdmCells.forEach((c, i) => { mtx.compose(V(c.x * 1.05, 15.7, c.z * 1.05), qI, one); crdm.setMatrixAt(i, mtx); });
+    scene.add(crdm);
+    const sc = V(1, 1, 1), tiny = V(0.001, 0.001, 0.001);
+    function updateRods() {
+      const reg = R.regX();
+      rodded.forEach((c, i) => {
+        const x = c.group === 'reg' ? reg : S.sdX;
+        const bottom = CORE_B + (1 - x) * H, top = bottom + H;
+        mtx.compose(V(c.x, bottom + H / 2, c.z), qI, one);
+        rodMesh.setMatrixAt(i, mtx); rodProxy.setMatrixAt(i, mtx);
+        mtx.compose(V(c.x, bottom - 0.05, c.z), qI, c.group === 'reg' ? one : tiny); tipMesh.setMatrixAt(i, mtx);
+        const L = 14.2 - top; sc.set(1, L, 1);
+        mtx.compose(V(c.x, top + L / 2, c.z), qI, sc); shaftMesh.setMatrixAt(i, mtx);
+      });
+      rodMesh.instanceMatrix.needsUpdate = tipMesh.instanceMatrix.needsUpdate = true;
+      shaftMesh.instanceMatrix.needsUpdate = rodProxy.instanceMatrix.needsUpdate = true;
+    }
+    const COLD = new THREE.Color(0x6d7378), HOT = new THREE.Color(0xe8782c), WHITE = new THREE.Color(0xffd9a0), SEL = new THREE.Color(0x7fe3ff);
+    let selected = null;
+    const cellIndex = new Map(core.cells.map((c, i) => [c, i]));
+    function updateCore() {
+      const K = P.assemblyPowers(core, R.regX(), S.sdX);
+      const p = Math.min(S.n, 1.3);
+      fuelCells.forEach((c, i) => {
+        const g = clamp(p * K[cellIndex.get(c)] * 0.8, 0, 1.4);
+        tmpC.copy(COLD).lerp(HOT, clamp(Math.pow(g, 0.6), 0, 1));
+        if (g > 1) tmpC.lerp(WHITE, Math.min(0.35, (g - 1) * 0.8));
+        if (c === selected) tmpC.lerp(SEL, 0.75);
+        fuelMesh.setColorAt(i, tmpC);
+      });
+      fuelMesh.instanceColor.needsUpdate = true;
+      const glow = Math.max(clamp(Math.sqrt(S.n), 0, 1.2), clamp((S.Pth - S.n * (1 - P.C.DH_SUM)) * 4, 0, 0.3));
+      coreGlowMat.opacity = 0.015 + 0.11 * glow; waterMat.opacity = 0.015 + 0.05 * glow;
+      halo.material.opacity = 0.03 + 0.22 * glow; blueLight.intensity = 0.15 + 1.6 * glow;
+    }
+
+    /* ---------- four primary loops ---------- */
+    const sgShellMat = M(0xa9b4b9, { transparent: true, opacity: 0.26, side: THREE.DoubleSide, depthWrite: false });
+    const sgTubeMat = new THREE.MeshBasicMaterial({ color: 0xd8794a });
+    const sgTubes = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05, 0.05, 10.4, 6), sgTubeMat, 4 * 5 * 7);
+    let tI = 0;
+    const pumps = [], sgCenters = [], pumpPos = [], hotMid = [], coldMid = [];
+    const NOZ = 2.2;
+    [45, 135, 225, 315].forEach((deg, k) => {
+      const a = deg * Math.PI / 180, n = V(Math.sin(a), 0, Math.cos(a)), t = V(Math.cos(a), 0, -Math.sin(a));
+      const c = n.clone().multiplyScalar(9.5).setY(15); sgCenters.push(c);
+      const qT = new THREE.Quaternion().setFromUnitVectors(Y, t);
+      const shell = add(new THREE.CylinderGeometry(2, 2, 12, 32, 1, true), sgShellMat, c, 'sg'); shell.quaternion.copy(qT); shell.userData.loop = k;
+      [-6, 6].forEach(o => { add(new THREE.SphereGeometry(2, 24, 12), sgShellMat, c.clone().addScaledVector(t, o), 'sg').userData.loop = k; });
+      for (let j = 0; j < 5; j++) for (let m = -3; m <= 3; m++) {
+        mtx.compose(c.clone().addScaledVector(n, m * 0.4).setY(c.y - 1.4 + j * 0.32), qT, one);
+        sgTubes.setMatrixAt(tI++, mtx);
+      }
+      // loops 3 and 4 are mirrored so no pump or cold leg sits in front of the vessel cutaway
+      const mir = k >= 2 ? -1 : 1;
+      const hc = c.clone().addScaledVector(t, -1.3 * mir), cc = c.clone().addScaledVector(t, 1.3 * mir);
+      [[hc, 0xb56a5c], [cc, 0x6d8fae]].forEach(([p, col]) => {
+        add(new THREE.CylinderGeometry(0.5, 0.5, 6, 18), M(col), V(p.x, 14.6, p.z), 'sg').userData.loop = k;
+        add(new THREE.CylinderGeometry(0.72, 0.72, 0.25, 18), M(0x8b969c), V(p.x, 17.7, p.z));
+      });
+      // hot leg: straight from the upper nozzle row, elbow up into the hot collector
+      const dH = V(hc.x, 0, hc.z).normalize();
+      pipe([dH.clone().multiplyScalar(NOZ).setY(10.4), V(hc.x, 10.4, hc.z), V(hc.x, 11.7, hc.z)], 0.45, 'hot', { bend: 0.9, loop: k });
+      hotMid.push(dH.clone().multiplyScalar(5.2).setY(10.4));
+      // main coolant pump
+      const pa = a + 0.40 * mir, pn = V(Math.sin(pa), 0, Math.cos(pa)), Pp = pn.clone().multiplyScalar(6.0);
+      pumpPos.push(Pp.clone());
+      add(new THREE.CylinderGeometry(1.0, 0.8, 2.2, 24), M(0x7f8b90), V(Pp.x, 9.0, Pp.z), 'pump').userData.loop = k;
+      add(new THREE.CylinderGeometry(0.75, 0.75, 2.2, 24), M(0x3f5b4a), V(Pp.x, 11.2, Pp.z), 'pump').userData.loop = k;
+      const fly = new THREE.Group(); fly.position.set(Pp.x, 12.45, Pp.z);
+      const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.95, 0.22, 24), M(0x56646a));
+      disc.userData = { pick: 'pump', loop: k }; pickables.push(disc); fly.add(disc);
+      const mark = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.26, 0.16), new THREE.MeshBasicMaterial({ color: 0xffc83a }));
+      mark.position.x = 0.45; fly.add(mark);
+      scene.add(fly); pumps.push(fly);
+      // cold leg: down from the cold collector through the loop seal into the pump, then to the lower nozzle row
+      pipe([V(cc.x, 11.7, cc.z), V(cc.x, 5.5, cc.z), V(Pp.x, 5.5, Pp.z), V(Pp.x, 7.95, Pp.z)], 0.45, 'cold', { bend: 1.0, loop: k });
+      pipe([V(Pp.x, 9.4, Pp.z), pn.clone().multiplyScalar(NOZ).setY(9.4)], 0.45, 'cold', { loop: k });
+      coldMid.push(pn.clone().multiplyScalar(3.6).setY(9.4));
+      // nozzle collars on the vessel
+      [[dH, 10.4], [pn, 9.4]].forEach(([d, y]) => {
+        const col = add(new THREE.CylinderGeometry(0.62, 0.62, 0.5, 18), steel, d.clone().multiplyScalar(2.35).setY(y));
+        col.quaternion.setFromUnitVectors(Y, d);
+      });
+      // steam line from the top of the steam generator to the header outside containment
+      const zk = [2.1, -2.1, -0.7, 0.7][k], yk = [21, 21, 23, 23][k];
+      pipe([V(c.x, 16.9, c.z), V(c.x, yk, c.z), V(c.x, yk, zk), V(26, yk, zk), V(26, 20.05, zk)], 0.32, 'steam', { bend: 0.9, loop: k });
+      // feedwater riser from the ring header into the steam generator
+      pipe([n.clone().multiplyScalar(13).setY(2.5), n.clone().multiplyScalar(13).setY(15), n.clone().multiplyScalar(11.45).setY(15)], 0.2, 'feed', { bend: 0.7, loop: k });
+    });
+    scene.add(sgTubes);
+
+    // pressurizer and surge line
+    add(new THREE.CylinderGeometry(1.4, 1.4, 11, 32), M(0x9aa5ab), V(7.5, 11.5, 0), 'prz');
+    add(new THREE.SphereGeometry(1.4, 24, 12), M(0x9aa5ab), V(7.5, 17, 0), 'prz').scale.y = 0.55;
+    add(new THREE.SphereGeometry(1.4, 24, 12), M(0x9aa5ab), V(7.5, 6, 0), 'prz').scale.y = 0.55;
+    const hl2 = (127.2 * Math.PI) / 180;
+    pipe([V(7.5, 5.4, 0), V(7.5, 3.2, 0), V(5 * Math.sin(hl2), 3.2, 5 * Math.cos(hl2)), V(5 * Math.sin(hl2), 9.98, 5 * Math.cos(hl2))], 0.16, 'surge', { arrows: false, bend: 0.5 });
+
+    // feedwater ring header inside containment
+    const ring = add(new THREE.TorusGeometry(13, 0.24, 10, 120), M(PIPE_STYLE.feed.color, { metalness: 0.35, roughness: 0.42 }), V(0, 2.5, 0), 'pipe');
+    ring.rotation.x = Math.PI / 2; ring.userData.kind = 'feed';
+
+    /* ---------- steam header and turbine hall ---------- */
+    add(new THREE.CylinderGeometry(0.7, 0.7, 6, 18), M(PIPE_STYLE.steam.color), V(26, 20, 0), 'pipe').rotation.x = Math.PI / 2;
+    pickables[pickables.length - 1].userData.kind = 'steam';
+    pipe([V(26, 20, 0), V(36, 20, 0), V(36, 10.4, 0)], 0.55, 'steam', { bend: 1.4 });
+    pipe([V(38.6, 10.6, 0), V(38.6, 14, 0), V(46, 14, 0), V(46, 11.6, 0)], 0.6, 'xover', { bend: 1.2 });
+    pipe([V(45.4, 14, 0), V(57, 14, 0), V(57, 11.6, 0)], 0.6, 'xover', { bend: 1.2 });
+
+    const hall = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(50, 22, 26)), new THREE.LineBasicMaterial({ color: 0x4d6470, transparent: true, opacity: 0.6 }));
+    hall.position.set(54, 11, 0); scene.add(hall);
+    add(new THREE.BoxGeometry(50, 0.3, 26), M(0x2a3832, { metalness: 0, roughness: 1, transparent: true, opacity: 0.45, depthWrite: false }), V(54, 4.2, 0));
+    const casingLo = M(0x8c979c, { side: THREE.DoubleSide });
+    const casingHi = M(0xa9b6bb, { transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false });
+    function casing(x0, x1, r0, r1) {
+      const L = x1 - x0, cx = (x0 + x1) / 2;
+      add(new THREE.CylinderGeometry(r1, r0, L, 32, 1, true, 0, Math.PI), casingLo, V(cx, 8, 0), 'turbine').rotation.z = -Math.PI / 2;
+      add(new THREE.CylinderGeometry(r1, r0, L, 32, 1, true, Math.PI, Math.PI), casingHi, V(cx, 8, 0)).rotation.z = -Math.PI / 2;
+    }
+    casing(33, 39.5, 2.0, 2.6); casing(42, 50, 3.8, 3.8); casing(53, 61, 3.8, 3.8);
+    add(new THREE.CylinderGeometry(2.6, 2.6, 9, 32, 1, true, 0, Math.PI), M(0x4a6a58, { side: THREE.DoubleSide }), V(68, 8, 0), 'generator').rotation.z = -Math.PI / 2;
+    add(new THREE.CylinderGeometry(2.6, 2.6, 9, 32, 1, true, Math.PI, Math.PI), M(0x6c9a80, { transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false }), V(68, 8, 0)).rotation.z = -Math.PI / 2;
+    add(new THREE.CylinderGeometry(1.1, 1.1, 2, 24), M(0x4a6a58), V(74, 8, 0), 'generator').rotation.z = Math.PI / 2;
+
+    const rotor = new THREE.Group(); rotor.position.set(0, 8, 0); scene.add(rotor);
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 44, 16), M(0xc3ccd0, { metalness: 0.8, roughness: 0.25 }));
+    shaft.rotation.z = Math.PI / 2; shaft.position.x = 53.5; rotor.add(shaft);
+    const rows = [];
+    for (let i = 0; i < 6; i++) rows.push({ x: 34 + i * 0.95, len: 0.55 + i * 0.12 });
+    [46, 57].forEach(cx => { for (let i = 0; i < 5; i++) { const l = 1.0 + i * 0.55; rows.push({ x: cx - 0.6 - i * 0.8, len: l }, { x: cx + 0.6 + i * 0.8, len: l }); } });
+    const BL = 28, blades = new THREE.InstancedMesh(new THREE.BoxGeometry(0.1, 1, 0.42), M(0xd9dfe2, { metalness: 0.85, roughness: 0.22 }), rows.length * BL);
+    let bI = 0;
+    const qB = new THREE.Quaternion(), eul = new THREE.Euler();
+    rows.forEach(rw => {
+      for (let j = 0; j < BL; j++) {
+        const a = j / BL * Math.PI * 2, rad = 0.45 + rw.len / 2;
+        eul.set(a, 0, 0); qB.setFromEuler(eul);
+        mtx.compose(V(rw.x, Math.cos(a) * rad, Math.sin(a) * rad), qB, V(1, rw.len, 1));
+        blades.setMatrixAt(bI++, mtx);
+      }
+    });
+    blades.userData.pick = 'turbine'; pickables.push(blades); rotor.add(blades);
+    const genRotor = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 7, 24), M(0x7b5b3a, { metalness: 0.6 }));
+    genRotor.rotation.z = Math.PI / 2; genRotor.position.x = 68; rotor.add(genRotor);
+    for (let i = 0; i < 4; i++) {
+      const pole = new THREE.Mesh(new THREE.BoxGeometry(7.1, 0.35, 0.5), new THREE.MeshBasicMaterial({ color: 0xd9a441 }));
+      const a = i * Math.PI / 2; pole.position.set(68, Math.cos(a) * 1.38, Math.sin(a) * 1.38); pole.rotation.x = a; rotor.add(pole);
+    }
+
+    // condenser, feed train, cooling water
+    add(new THREE.BoxGeometry(20, 4.2, 9), M(0x5c7484, { metalness: 0.3 }), V(51.5, 2.1, 0), 'condenser');
+    add(new THREE.BoxGeometry(3, 2, 2), M(0x3f6a52), V(33, 1.2, 6.5), 'feedpump');
+    pipe([V(42.5, 1.2, 4.6), V(42.5, 1.2, 6.5), V(34.6, 1.2, 6.5)], 0.22, 'feed', { bend: 0.6 });
+    pipe([V(31.5, 2.5, 6.5), V(11.26, 2.5, 6.5)], 0.24, 'feed');
+    pipe([V(50, 0.9, -4.6), V(50, 0.9, -26), V(94, 0.9, -26), V(94, 0.9, -34)], 0.9, 'cw', { bend: 2.4 });
+    pipe([V(98, 0.9, -30), V(98, 0.9, -22), V(55, 0.9, -22), V(55, 0.9, -4.6)], 0.9, 'cw', { bend: 2.4 });
+
+    const tp = [];
+    for (let y = 0; y <= 52; y += 2) tp.push(new THREE.Vector2(9 * Math.sqrt(1 + Math.pow((y - 38) / 22, 2)), y));
+    add(new THREE.LatheGeometry(tp, 56), M(0xa9aea8, { metalness: 0, roughness: 0.95, side: THREE.DoubleSide }), V(110, 0, -42), 'tower');
+    const plume = [];
+    for (let i = 0; i < 16; i++) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0xe8eef2, transparent: true, depthWrite: false, opacity: 0.3 }));
+      sp.userData.age = i / 16; scene.add(sp); plume.push(sp);
+    }
+
+    // grid connection with travelling pulses
+    add(new THREE.BoxGeometry(4, 4.5, 3.5), M(0x58626a), V(80, 2.25, 9), 'generator');
+    const pyl = [V(92, 0, 16), V(106, 0, 24), V(120, 0, 32)];
+    pyl.forEach(p => {
+      add(new THREE.CylinderGeometry(0.25, 0.9, 18, 4), M(0x7d878c), V(p.x, 9, p.z));
+      add(new THREE.BoxGeometry(0.4, 0.4, 7), M(0x7d878c), V(p.x, 16.5, p.z));
+    });
+    const wireMat = new THREE.MeshBasicMaterial({ color: 0x3a3f30 });
+    const wires = [-3, 0, 3].map(o => {
+      const pts = [V(80, 4.5, 9 + o * 0.3)]; pyl.forEach(p => pts.push(V(p.x, 16.3, p.z + o)));
+      const c = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.1);
+      scene.add(new THREE.Mesh(new THREE.TubeGeometry(c, 80, 0.07, 6, false), wireMat));
+      return c;
+    });
+    pipe([V(72.5, 8, 0), V(76.5, 8, 0), V(76.5, 4.5, 8)], 0.2, 'bus', { arrows: false });
+    const pulseItems = [];
+    wires.forEach(c => { const L = c.getLength(); for (let i = 0; i < 10; i++) pulseItems.push({ c, L, t: i / 10 }); });
+    const pulses = new THREE.InstancedMesh(new THREE.SphereGeometry(0.22, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe27a }), pulseItems.length);
+    scene.add(pulses);
+    const pv = V(0, 0, 0), pscale = V(1, 1, 1);
+
+    /* ---------- labels ---------- */
+    const labels = [
+      { name: 'Reactor', pos: V(0, 18.6, 0), pick: 'reactor', view: 'core', maxR: 400 },
+      { name: 'Control rods', pos: V(0.9, 12.4, 1.7), pick: 'rodinfo', maxR: 40 },
+      { name: 'Steam generator', pos: sgCenters[0].clone().setY(17.4), pick: 'sg', view: 'steam', loop: 0, maxR: 400 },
+      { name: 'Main coolant pump', pos: pumpPos[3].clone().setY(12.7), pick: 'pump', view: 'steam', maxR: 95, loop: 3 },
+      { name: 'Pressurizer', pos: V(7.5, 18.8, 0), pick: 'prz', maxR: 95 },
+      { name: 'Hot leg', pos: hotMid[0], pick: 'pipe', kind: 'hot', loop: 0, maxR: 60 },
+      { name: 'Cold leg', pos: coldMid[0], pick: 'pipe', kind: 'cold', loop: 0, maxR: 60 },
+      { name: 'Main steam', pos: V(31, 21.2, 0), pick: 'pipe', kind: 'steam', maxR: 140 },
+      { name: 'Feedwater', pos: V(21, 3.4, 6.5), pick: 'pipe', kind: 'feed', maxR: 140 },
+      { name: 'Turbine', pos: V(48, 14.6, 0), pick: 'turbine', view: 'turbine', maxR: 400 },
+      { name: 'Generator', pos: V(68, 12.5, 0), pick: 'generator', view: 'turbine', maxR: 400 },
+      { name: 'Condenser', pos: V(51.5, 5, 5.5), pick: 'condenser', maxR: 150 },
+      { name: 'Cooling tower', pos: V(110, 56, -42), pick: 'tower', maxR: 400 }
+    ];
+    labels.forEach(l => {
+      const b = document.createElement('button');
+      b.className = 'tag'; b.type = 'button';
+      const sp = document.createElement('span'); sp.textContent = l.name; b.appendChild(sp);
+      b.addEventListener('click', () => { if (l.view) setView(l.view); onPick(l.pick, { kind: l.kind, loop: l.loop }); });
+      labelsEl.appendChild(b); l.el = b;
+    });
+    const lp = V(0, 0, 0);
+    function updateLabels() {
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      labels.forEach(l => {
+        lp.copy(l.pos).project(camera);
+        const vis = lp.z < 1 && Math.abs(lp.x) < 1.05 && Math.abs(lp.y) < 1.05 && cam.r < l.maxR;
+        l.el.style.display = vis ? '' : 'none';
+        if (vis) l.el.style.transform = 'translate(' + ((lp.x + 1) / 2 * w) + 'px,' + ((1 - lp.y) / 2 * h) + 'px) translate(-50%,-100%)';
+      });
+    }
+
+    /* ---------- camera ---------- */
+    const VIEWS = {
+      overview: { t: V(42, 6, -6), r: 125, th: 0.6, ph: 1.08 },
+      core: { t: V(0, 6.2, 0), r: 14.5, th: 0, ph: 1.12 },
+      steam: { t: V(4, 11, 3), r: 38, th: 0.55, ph: 1.08 },
+      turbine: { t: V(53, 7, 0), r: 44, th: 0.42, ph: 1.18 }
+    };
+    const cam = { t: VIEWS.overview.t.clone(), r: VIEWS.overview.r, th: VIEWS.overview.th, ph: VIEWS.overview.ph };
+    const goal = { t: cam.t.clone(), r: cam.r, th: cam.th, ph: cam.ph };
+    function setView(k, instant) {
+      const v = VIEWS[k]; if (!v) return;
+      goal.t.copy(v.t); goal.r = v.r; goal.ph = v.ph;
+      let d = v.th - goal.th; d = ((d + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI; goal.th += d;
+      if (instant || reduceMotion) { cam.t.copy(goal.t); cam.r = goal.r; cam.th = goal.th; cam.ph = goal.ph; }
+      if (onView) onView(k);
+    }
+    function applyCam() {
+      const s = Math.sin(cam.ph);
+      camera.position.set(cam.t.x + cam.r * s * Math.sin(cam.th), cam.t.y + cam.r * Math.cos(cam.ph), cam.t.z + cam.r * s * Math.cos(cam.th));
+      camera.lookAt(cam.t);
+    }
+    const ptrs = new Map();
+    let pinch = 0, down = null;
+    canvas.addEventListener('pointerdown', e => {
+      canvas.setPointerCapture(e.pointerId);
+      ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      down = ptrs.size === 1 ? { x: e.clientX, y: e.clientY, t: performance.now(), moved: false } : null;
+      if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); }
+    });
+    canvas.addEventListener('pointermove', e => {
+      if (!ptrs.has(e.pointerId)) return;
+      const p = ptrs.get(e.pointerId);
+      if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 7) down.moved = true;
+      if (ptrs.size === 1) { goal.th -= (e.clientX - p.x) * 0.006; goal.ph = clamp(goal.ph - (e.clientY - p.y) * 0.005, 0.12, 1.5); }
+      p.x = e.clientX; p.y = e.clientY;
+      if (ptrs.size === 2) {
+        const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (pinch > 0) goal.r = clamp(goal.r * pinch / d, 6, 260);
+        pinch = d;
+      }
+    });
+    function up(e) {
+      ptrs.delete(e.pointerId); pinch = 0;
+      if (e.type === 'pointerup' && down && !down.moved && performance.now() - down.t < 600 && ptrs.size === 0) pickAt(e.clientX, e.clientY);
+      if (ptrs.size === 0) down = null;
+    }
+    canvas.addEventListener('pointerup', up);
+    canvas.addEventListener('pointercancel', up);
+    canvas.addEventListener('wheel', e => { e.preventDefault(); goal.r = clamp(goal.r * Math.exp(e.deltaY * 0.0012), 6, 260); }, { passive: false });
+
+    const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
+    function pickAt(cx, cy) {
+      const rect = canvas.getBoundingClientRect();
+      ndc.set((cx - rect.left) / rect.width * 2 - 1, -(cy - rect.top) / rect.height * 2 + 1);
+      raycaster.setFromCamera(ndc, camera);
+      const hits = raycaster.intersectObjects(pickables, false);
+      if (!hits.length) return;
+      const h = hits[0], u = h.object.userData;
+      if (u.pick === 'fuel') onPick('assembly', { cell: fuelCells[h.instanceId] });
+      else if (u.pick === 'rod') onPick('rod', { cell: rodded[h.instanceId] });
+      else onPick(u.pick, { kind: u.kind, loop: u.loop });
+    }
+
+    function resize() {
+      const w = stage.clientWidth, h = stage.clientHeight;
+      if (!w || !h) return;
+      renderer.setSize(w, h, false); camera.aspect = w / h;
+      // keep at least ~50° of horizontal view so portrait phones still frame the plant
+      const minH = 50 * Math.PI / 180, vf = 2 * Math.atan(Math.tan(minH / 2) / camera.aspect) * 180 / Math.PI;
+      camera.fov = Math.min(75, Math.max(45, vf));
+      camera.updateProjectionMatrix();
+    }
+
+    /* ---------- per-frame update ---------- */
+    const hotCol = new THREE.Color(), baseHot = new THREE.Color(PIPE_STYLE.hot.color);
+    function flowOf(kind, steam, dump, rej) {
+      switch (kind) {
+        case 'hot': case 'cold': return { v: 3.2 * S.flow, f: S.flow };
+        case 'steam': return { v: 4.5 * (steam + dump), f: steam + dump };
+        case 'xover': return { v: 4 * steam, f: steam };
+        case 'feed': return { v: 2 * (steam + dump), f: steam + dump };
+        case 'cw': return { v: 2.2 * rej, f: rej };
+        default: return { v: 0, f: 0 };
+      }
+    }
+    function update(rdt) {
+      updateRods(); updateCore();
+      const steam = Math.max(0, S.Ps), dump = R.onGrid() ? 0 : S.qsg;
+      const rej = clamp((S.qsg - S.Ps * P.C.ETA) / 0.6 + (S.qsg > 0.01 ? 0.12 : 0), 0, 1.3);
+      pipes.forEach(p => {
+        if (!p.tex) return;
+        const fl = flowOf(p.kind, steam, dump, rej);
+        p.tex.offset.x -= fl.v * rdt / p.cycle;
+        p.mat.emissiveIntensity = fl.f > 0.01 ? 0.25 + 0.85 * Math.min(1, fl.f) : 0;
+      });
+      hotCol.copy(baseHot).lerp(new THREE.Color(0xd8452f), clamp((R.coreOut() - 295) / 35, 0, 1));
+      pipes.forEach(p => { if (p.kind === 'hot' || p.kind === 'surge') p.mat.color.copy(hotCol); });
+      sgTubeMat.color.setRGB(0.55 + 0.4 * clamp((S.Tm - 286) / 30, 0, 1), 0.4, 0.3);
+      pumps.forEach((p, i) => { p.rotation.y += (S.pumps[i] ? 1 : 0.05) * S.flow * 9 * rdt; });
+      rotor.rotation.x += (S.rpm / 3000) * 2 * Math.PI * 0.9 * rdt;
+      plume.forEach(sp => {
+        sp.userData.age = (sp.userData.age + rdt * 0.06) % 1;
+        const a = sp.userData.age, s = 14 + a * 40;
+        sp.position.set(110 + a * 30, 52 + a * 55, -42 + a * 8); sp.scale.set(s, s, 1);
+        sp.material.opacity = clamp(rej, 0, 1.2) * 0.32 * (1 - a) * Math.min(1, a * 6);
+      });
+      const e = steam;
+      wireMat.color.setRGB(0.23 + 0.7 * e, 0.25 + 0.6 * e, 0.19 + 0.1 * e);
+      pscale.setScalar(e > 0.01 ? 1 : 0.001);
+      pulseItems.forEach((it, i) => {
+        it.t = (it.t + 40 * e * rdt / it.L) % 1;
+        it.c.getPointAt(it.t, pv); mtx.compose(pv, qI, pscale); pulses.setMatrixAt(i, mtx);
+      });
+      pulses.instanceMatrix.needsUpdate = true;
+
+      cam.t.lerp(goal.t, Math.min(1, rdt * 4));
+      const k = Math.min(1, rdt * 5);
+      cam.r = lerp(cam.r, goal.r, k); cam.th = lerp(cam.th, goal.th, k); cam.ph = lerp(cam.ph, goal.ph, k);
+      applyCam();
+      renderer.render(scene, camera);
+      updateLabels();
+    }
+
+    return {
+      update, setView, resize, views: VIEWS,
+      highlight(cell) { selected = cell || null; },
+      pipeName: kind => (PIPE_STYLE[kind] || {}).name
+    };
+  };
+})();
+
+</script>
+<script>
+/* Cross-section viewer: core → assembly → rod, with live values from the reactor model. */
+(function () {
+  'use strict';
+
+  const NS = 'http://www.w3.org/2000/svg';
+  const fmt = (v, d) => { const x = isFinite(v) ? +(+v).toFixed(d || 0) || 0 : 0; return x.toLocaleString('en-US', { maximumFractionDigits: d || 0, minimumFractionDigits: d || 0 }); };
+
+  function ramp(stops, t) {
+    t = Math.max(0, Math.min(1, t));
+    const i = Math.min(stops.length - 2, Math.floor(t * (stops.length - 1)));
+    const f = t * (stops.length - 1) - i;
+    const a = stops[i], b = stops[i + 1];
+    const c = [0, 1, 2].map(k => Math.round(a[k] + (b[k] - a[k]) * f));
+    return 'rgb(' + c.join(',') + ')';
+  }
+  const POWER = [[251, 240, 201], [246, 193, 91], [234, 123, 44], [194, 64, 42], [125, 28, 28]];
+  const HEAT = [[122, 36, 18], [200, 64, 28], [240, 125, 34], [255, 201, 74], [255, 246, 216]];
+  const powerColor = k => ramp(POWER, (k - 0.4) / 1.2);
+  const tempColor = T => ramp(HEAT, (T - 300) / 1900);
+  const BATCH_COL = ['#8fd3c7', '#5aa9c9', '#3b6c8f'];
+
+  function el(tag, attrs, parent) {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  const hexPts = (cx, cy, R, rot) => {
+    const p = [];
+    for (let k = 0; k < 6; k++) { const a = rot + k * Math.PI / 3; p.push((cx + R * Math.cos(a)).toFixed(3) + ',' + (cy + R * Math.sin(a)).toFixed(3)); }
+    return p.join(' ');
+  };
+
+  window.CrossSection = function (opts) {
+    const { root, P, R, core, onSelectCell } = opts;
+    const S = R.S, C = P.C;
+    const pins = P.buildAssembly();
+    const guides = pins.filter(p => p.type === 'guide');
+    const $ = s => root.querySelector(s);
+    const svgBox = $('#xsDraw'), chartBox = $('#xsChart'), facts = $('#xsFacts');
+    const titleEl = $('#xsTitle'), leadEl = $('#xsLead'), crumbs = $('#xsCrumbs'), legend = $('#xsLegend'), modeBox = $('#xsMode');
+    let st = { level: 'core', cell: null, pin: null, mode: 'power' };
+    let refs = {};
+    let lastFocus = null;
+
+    /* ---------- shared live quantities ---------- */
+    function kq() { return P.assemblyPowers(core, R.regX(), S.sdX); }
+    function cellIns(c) { return !c.rodded ? 0 : (c.group === 'reg' ? R.regX() : S.sdX); }
+    function midCoolant(k) { return Math.min(345, R.coreIn() + R.coreDT() * k / 2); }
+    function outCoolant(k) { return Math.min(347, R.coreIn() + R.coreDT() * k); }
+    function rodState(cell, pin, K) {
+      const k = K[core.cells.indexOf(cell)];
+      const q = P.qAvg(S.Pth) * k * P.pinFactor(pin, cell.batch) * C.KZ_MID;
+      return P.rodProfile(q, midCoolant(k), S.flow, pin.type === 'gd');
+    }
+    function hottest(K) {
+      let best = null;
+      core.cells.forEach((c, i) => { if (!best || K[i] > best.k) best = { c, k: K[i] }; });
+      const fuel = pins.filter(p => p.type === 'fuel' || p.type === 'gd');
+      let bp = fuel[0];
+      fuel.forEach(p => { if (P.pinFactor(p, best.c.batch) > P.pinFactor(bp, best.c.batch)) bp = p; });
+      return { cell: best.c, pin: bp, k: best.k, prof: rodState(best.c, bp, K) };
+    }
+
+    function setFacts(rows) {
+      facts.innerHTML = rows.map(r => '<dt>' + r[0] + '</dt><dd>' + r[1] + '</dd>').join('');
+    }
+    function setCrumbs() {
+      const items = [{ label: 'Core', go: () => show('core') }];
+      if (st.level !== 'core' && st.cell) items.push({ label: 'Assembly ' + st.cell.id, go: () => show('assembly', st.cell) });
+      if (st.level === 'rod' && st.pin) items.push({ label: pinName(st.pin) });
+      crumbs.innerHTML = '';
+      items.forEach((it, i) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.textContent = it.label;
+        if (i === items.length - 1) b.setAttribute('aria-current', 'page');
+        else b.addEventListener('click', it.go);
+        crumbs.appendChild(b);
+        if (i < items.length - 1) { const sp = document.createElement('span'); sp.textContent = '›'; sp.setAttribute('aria-hidden', 'true'); crumbs.appendChild(sp); }
+      });
+    }
+    function pinName(p) {
+      return p.type === 'guide' ? 'Guide channel ' + p.id : p.type === 'center' ? 'Central tube' : (p.type === 'gd' ? 'Gadolinia rod ' : 'Fuel rod ') + p.id;
+    }
+
+    /* ---------- core map ---------- */
+    function renderCore() {
+      svgBox.innerHTML = ''; chartBox.innerHTML = ''; chartBox.hidden = true;
+      const svg = el('svg', { viewBox: '-8.2 -7.3 16.4 14.6', class: 'xs-svg', role: 'img', 'aria-label': 'Core cross-section with 163 fuel assemblies' }, svgBox);
+      el('circle', { cx: 0, cy: 0, r: 7.9, class: 'xs-barrel' }, svg);
+      const Rh = 1 / Math.sqrt(3) * 0.97;
+      refs = { hex: [] };
+      core.cells.forEach((c, i) => {
+        const g = el('g', { class: 'xs-hit', 'data-i': i }, svg);
+        const poly = el('polygon', { points: hexPts(c.u, c.v, Rh, Math.PI / 2), class: 'hx' }, g);
+        if (c === st.cell) poly.classList.add('sel');
+        if (c.rodded) el('circle', { cx: c.u, cy: c.v, r: 0.16, class: c.group === 'reg' ? 'dot-reg' : 'dot-sd' }, g);
+        refs.hex.push(poly);
+        g.addEventListener('click', () => show('assembly', c));
+      });
+      modeBox.hidden = false;
+      modeBox.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === st.mode));
+      legend.innerHTML = st.mode === 'power'
+        ? '<span class="ramp"></span><span>Relative assembly power, 0.4 to 1.6</span><span><i class="dot reg"></i>Regulating group</span><span><i class="dot sd"></i>Shutdown groups</span>'
+        : BATCH_COL.map((c, i) => '<span><i class="sw" style="background:' + c + '"></i>' + P.BATCH[i].name + '</span>').join('') + '<span><i class="dot reg"></i>Regulating group</span><span><i class="dot sd"></i>Shutdown groups</span>';
+      titleEl.textContent = 'Reactor core';
+      leadEl.textContent = 'Each hexagon is one fuel assembly, seen from above. Colour shows its share of the power right now and dots mark control clusters. Tap an assembly to open it.';
+      refreshCore();
+    }
+    function refreshCore() {
+      const K = kq();
+      refs.hex.forEach((poly, i) => poly.setAttribute('fill', st.mode === 'power' ? powerColor(K[i]) : BATCH_COL[core.cells[i].batch]));
+      const hot = hottest(K);
+      const nReg = core.cells.filter(c => c.group === 'reg').length;
+      setFacts([
+        ['Thermal power', fmt(S.Pth * C.P_NOM) + ' MWt'],
+        ['Fuel assemblies', '163, hexagonal, 235 mm across flats'],
+        ['Fuel rods', fmt(C.N_RODS) + ' (312 per assembly)'],
+        ['Control clusters', '121, of which ' + nReg + ' form the regulating group here'],
+        ['Regulating group', fmt(R.rodHeight()) + ' % of core height'],
+        ['Average linear heat rate', fmt(P.qAvg(S.Pth) / 1000, 1) + ' kW/m'],
+        ['Highest assembly power factor', fmt(hot.k, 2) + ' (assembly ' + hot.cell.id + ')'],
+        ['Hottest rod at mid-plane', fmt(hot.prof.q / 1000, 1) + ' kW/m, centre ' + fmt(hot.prof.Tc) + ' °C'],
+        ['Coolant in / out', fmt(R.coreIn(), 1) + ' / ' + fmt(R.coreOut(), 1) + ' °C'],
+        ['Boric acid', fmt(S.boron) + ' ppm']
+      ]);
+    }
+
+    /* ---------- fuel assembly ---------- */
+    function renderAssembly() {
+      const cell = st.cell;
+      svgBox.innerHTML = ''; chartBox.innerHTML = ''; chartBox.hidden = true; modeBox.hidden = true;
+      const svg = el('svg', { viewBox: '-142 -124 284 248', class: 'xs-svg', role: 'img', 'aria-label': 'Fuel assembly cross-section, 331 positions' }, svgBox);
+      el('polygon', { points: hexPts(0, 0, 135.7, 0), class: 'xs-water' }, svg);
+      refs = { pins: [], abs: [] };
+      const ins = cellIns(cell), absMid = cell.rodded && ins > 0.5;
+      pins.forEach(p => {
+        const g = el('g', { class: 'xs-hit' }, svg);
+        if (p.type === 'fuel' || p.type === 'gd') {
+          const c = el('circle', { cx: p.x, cy: p.y, r: 4.55, class: p.type === 'gd' ? 'pin gd' : 'pin' }, g);
+          refs.pins.push({ c, p });
+          if (p === st.pin) c.classList.add('sel');
+        } else if (p.type === 'guide') {
+          el('circle', { cx: p.x, cy: p.y, r: 6.3, class: 'guide' + (p === st.pin ? ' sel' : '') }, g);
+          const a = el('circle', { cx: p.x, cy: p.y, r: 4.1, class: 'absorber' }, g);
+          a.style.display = absMid ? '' : 'none';
+          refs.abs.push(a);
+        } else {
+          el('circle', { cx: p.x, cy: p.y, r: 5.6, class: 'ctube' + (p === st.pin ? ' sel' : '') }, g);
+          el('path', { d: 'M' + (p.x - 2.4) + ' ' + p.y + 'h4.8M' + p.x + ' ' + (p.y - 2.4) + 'v4.8', class: 'cross' }, g);
+        }
+        g.addEventListener('click', () => show('rod', cell, p));
+      });
+      legend.innerHTML = '<span class="ramp"></span><span>Rod power relative to core average</span><span><i class="sw ring-gd"></i>Gadolinia rods</span><span><i class="sw guide"></i>Guide channel</span>' +
+        (cell.rodded ? '<span><i class="sw abs"></i>Absorber at mid-plane</span>' : '');
+      titleEl.textContent = 'Fuel assembly ' + cell.id;
+      leadEl.textContent = 'TVS-2006 type: 312 fuel rods on a 12.75 mm triangular pitch, 18 guide channels for the control cluster and a central tube. Tap any rod.';
+      refreshAssembly();
+    }
+    function refreshAssembly() {
+      const cell = st.cell, K = kq(), k = K[core.cells.indexOf(cell)];
+      refs.pins.forEach(o => o.c.setAttribute('fill', powerColor(k * P.pinFactor(o.p, cell.batch))));
+      const ins = cellIns(cell);
+      refs.abs.forEach(a => { a.style.display = cell.rodded && ins > 0.5 ? '' : 'none'; });
+      const fuel = pins.filter(p => p.type === 'fuel' || p.type === 'gd');
+      let hp = fuel[0]; fuel.forEach(p => { if (P.pinFactor(p, cell.batch) > P.pinFactor(hp, cell.batch)) hp = p; });
+      const prof = rodState(cell, hp, K);
+      const grp = !cell.rodded ? 'None in this assembly' : (cell.group === 'reg' ? 'Regulating group' : 'Shutdown group') + ', ' + fmt((1 - ins) * 100) + ' % of core height';
+      setFacts([
+        ['Position', cell.ring === 0 ? 'Central assembly' : 'Ring ' + cell.ring + ' of 7, counted from the centre'],
+        ['Fuel', P.BATCH[cell.batch].name + ', about ' + P.BATCH[cell.batch].burnup + ' GWd/t'],
+        ['Relative power', fmt(k, 2)],
+        ['Assembly power', fmt(S.Pth * C.P_NOM * k / C.N_FA, 1) + ' MW'],
+        ['Coolant outlet', fmt(outCoolant(k), 1) + ' °C'],
+        ['Control cluster', grp],
+        ['Hottest rod at mid-plane', fmt(prof.q / 1000, 1) + ' kW/m, centre ' + fmt(prof.Tc) + ' °C'],
+        ['Contents', '306 UO₂ rods, 6 UO₂–Gd₂O₃ rods, 18 guide channels, 1 central tube']
+      ]);
+    }
+
+    /* ---------- rods ---------- */
+    function leader(svg, x0, y0, y1, text, cls) {
+      el('polyline', { points: x0 + ',' + y0 + ' 7.9,' + y1 + ' 8.5,' + y1, class: 'lead' }, svg);
+      const t = el('text', { x: 8.8, y: y1 + 0.33, class: 'lbl' + (cls ? ' ' + cls : '') }, svg);
+      t.textContent = text;
+      return t;
+    }
+    function renderRod() {
+      chartBox.hidden = true; chartBox.innerHTML = ''; modeBox.hidden = true;
+      const p = st.pin;
+      if (p.type === 'guide') return renderGuide();
+      if (p.type === 'center') return renderCenter();
+      titleEl.textContent = (p.type === 'gd' ? 'Gadolinia fuel rod ' : 'Fuel rod ') + p.id;
+      leadEl.textContent = 'Cut through the core mid-plane. Heat flows outward from the pellet, through the helium gap and the cladding, into the water.';
+      legend.innerHTML = '<span class="heat"></span><span>Pellet temperature, 300 to 2200 °C</span>';
+      chartBox.hidden = false;
+      refreshRod();
+    }
+    function refreshRod() {
+      const p = st.pin;
+      if (p.type !== 'fuel' && p.type !== 'gd') return refreshGuide();
+      const K = kq(), prof = rodState(st.cell, p, K);
+      svgBox.innerHTML = '';
+      const svg = el('svg', { viewBox: '-7.6 -7.6 29.6 15.2', class: 'xs-svg', role: 'img', 'aria-label': 'Fuel rod cross-section' }, svgBox);
+      const defs = el('defs', {}, svg);
+      const gr = el('radialGradient', { id: 'pelletGrad', cx: 0.5, cy: 0.5, r: 0.5 }, defs);
+      const fr = 0.6 / 3.8;
+      [[0, prof.Tc], [fr, prof.Tc], [0.55, prof.Tc - (prof.Tc - prof.Tps) * 0.45], [1, prof.Tps]].forEach(([o, T]) => el('stop', { offset: o, 'stop-color': tempColor(T) }, gr));
+      el('polygon', { points: hexPts(0, 0, 7.36, 0), class: 'xs-water' }, svg);
+      el('circle', { cx: 0, cy: 0, r: 4.55, class: 'clad' }, svg);
+      el('circle', { cx: 0, cy: 0, r: 3.865, class: 'gap' }, svg);
+      el('circle', { cx: 0, cy: 0, r: 3.8, fill: 'url(#pelletGrad)', class: p.type === 'gd' ? 'pellet gdring' : 'pellet' }, svg);
+      el('circle', { cx: 0, cy: 0, r: 0.6, class: 'hole' }, svg);
+      leader(svg, 5.4, -4.6, -5.6, 'Coolant water');
+      leader(svg, 3.6, -2.08, -3.2, 'Zr-1%Nb cladding');
+      leader(svg, 3.83, 0, -0.8, 'Helium gap');
+      leader(svg, 1.9, 1.1, 1.6, (p.type === 'gd' ? 'UO₂–Gd₂O₃ pellet' : 'UO₂ pellet ⌀7.6 mm'));
+      leader(svg, 0.42, 0.42, 4.0, 'Central hole ⌀1.2 mm');
+      drawProfile(prof);
+      const margin = P.ROD.T_MELT - prof.Tc;
+      setFacts([
+        ['Linear heat rate', fmt(prof.q / 1000, 1) + ' kW/m (' + fmt(prof.q / 100) + ' W/cm)'],
+        ['Surface heat flux', fmt(prof.flux / 1000) + ' kW/m²'],
+        ['Pellet centre', fmt(prof.Tc) + ' °C'],
+        ['Pellet surface', fmt(prof.Tps) + ' °C'],
+        ['Cladding outer surface', fmt(prof.Tco) + ' °C'],
+        ['Coolant here', fmt(prof.Tcool) + ' °C'],
+        ['Margin to UO₂ melting', fmt(margin) + ' K below 2840 °C'],
+        ['Heat transfer to water', fmt(prof.h / 1000, 1) + ' kW/m²·K at ' + fmt(S.flow * 100) + ' % flow'],
+        ['Geometry', 'Rod ⌀9.1 mm, cladding 0.69 mm, pellet ⌀7.6 mm, pitch 12.75 mm'],
+        ['Basis', 'Mid-plane, axial factor ' + C.KZ_MID + ', rod factor ' + fmt(P.pinFactor(p, st.cell.batch), 2)]
+      ]);
+    }
+    function drawProfile(prof) {
+      chartBox.innerHTML = '';
+      const W = 340, Hh = 178, x0 = 44, x1 = 330, y0 = 14, y1 = 146, rMax = 6.375;
+      const tLo = Math.floor((prof.Tcool - 20) / 100) * 100, tHi = Math.max(tLo + 300, Math.ceil((prof.Tc + 60) / 100) * 100);
+      const X = r => x0 + (x1 - x0) * r / rMax, Yv = T => y1 - (y1 - y0) * (T - tLo) / (tHi - tLo);
+      const svg = el('svg', { viewBox: '0 0 ' + W + ' ' + Hh, class: 'xs-chart', role: 'img', 'aria-label': 'Radial temperature profile' }, chartBox);
+      [[0, 0.6, 'z-hole'], [0.6, 3.8, 'z-fuel'], [3.8, 3.865, 'z-gap'], [3.865, 4.55, 'z-clad'], [4.55, rMax, 'z-water']].forEach(([a, b, c]) =>
+        el('rect', { x: X(a), y: y0, width: Math.max(0.8, X(b) - X(a)), height: y1 - y0, class: c }, svg));
+      for (let T = tLo; T <= tHi; T += (tHi - tLo > 900 ? 200 : 100)) {
+        el('line', { x1: x0, x2: x1, y1: Yv(T), y2: Yv(T), class: 'gridl' }, svg);
+        el('text', { x: x0 - 5, y: Yv(T) + 3.5, class: 'ax', 'text-anchor': 'end' }, svg).textContent = T;
+      }
+      [0, 1, 2, 3, 4, 5, 6].forEach(r => { el('text', { x: X(r), y: y1 + 13, class: 'ax', 'text-anchor': 'middle' }, svg).textContent = r; });
+      el('text', { x: x1, y: Hh - 3, class: 'ax', 'text-anchor': 'end' }, svg).textContent = 'radius, mm';
+      el('text', { x: 4, y: 10, class: 'ax' }, svg).textContent = '°C';
+      el('polyline', { points: prof.profile.map(pt => X(pt.r).toFixed(1) + ',' + Yv(pt.T).toFixed(1)).join(' '), class: 'curve' }, svg);
+      [[0.15, prof.Tc, 'Centre ' + fmt(prof.Tc)], [3.8, prof.Tps, fmt(prof.Tps)], [4.55, prof.Tco, fmt(prof.Tco)]].forEach(([r, T, s], i) => {
+        el('circle', { cx: X(r), cy: Yv(T), r: 2.6, class: 'pt' }, svg);
+        el('text', { x: X(r) + 5, y: Yv(T) - 5 - (i === 2 ? 4 : 0), class: 'ax strong' }, svg).textContent = s;
+      });
+    }
+    function renderGuide() {
+      const cell = st.cell;
+      titleEl.textContent = 'Guide channel ' + st.pin.id;
+      leadEl.textContent = cell.rodded
+        ? 'One of 18 guide channels. The control cluster’s absorber rods slide down these channels together.'
+        : 'One of 18 guide channels. This assembly sits under no control drive, so its channels hold only water.';
+      legend.innerHTML = '';
+      refreshGuide();
+    }
+    function refreshGuide() {
+      const cell = st.cell, p = st.pin;
+      if (p.type === 'center') return refreshCenter();
+      const ins = cellIns(cell), inMid = cell.rodded && ins > 0.5;
+      svgBox.innerHTML = '';
+      const svg = el('svg', { viewBox: '-7.6 -7.6 29.6 15.2', class: 'xs-svg', role: 'img', 'aria-label': 'Guide channel cross-section' }, svgBox);
+      el('polygon', { points: hexPts(0, 0, 7.36, 0), class: 'xs-water' }, svg);
+      el('circle', { cx: 0, cy: 0, r: 6.3, class: 'gtube' }, svg);
+      el('circle', { cx: 0, cy: 0, r: 5.45, class: 'xs-water' }, svg);
+      leader(svg, 4.9, -3.8, -5.6, 'Guide channel');
+      if (inMid) {
+        el('circle', { cx: 0, cy: 0, r: 4.1, class: 'aclad' }, svg);
+        el('circle', { cx: 0, cy: 0, r: 3.5, class: 'b4c' }, svg);
+        leader(svg, 4.6, -1.2, -2.6, 'Water');
+        leader(svg, 3.8, 1.2, 0.4, 'Steel cladding ⌀8.2 mm');
+        leader(svg, 1.6, 1.6, 3.4, 'Boron carbide (B₄C)');
+      } else {
+        leader(svg, 2, 1, 0.4, 'Water only');
+      }
+      const tip = cell.rodded ? (1 - ins) * C.ACTIVE_H : null;
+      setFacts([
+        ['Control cluster', !cell.rodded ? 'None' : (cell.group === 'reg' ? 'Regulating group' : 'Shutdown group')],
+        ['Sizes', 'Guide channel about ⌀12.6 mm, zirconium alloy; absorber rod ⌀8.2 mm'],
+        ['Cluster position', cell.rodded ? fmt((1 - ins) * 100) + ' % of core height' : '–'],
+        ['Absorber tip', cell.rodded ? fmt(tip, 2) + ' m above the bottom of the fuel' : '–'],
+        ['At the mid-plane', inMid ? 'Absorber present' : 'Water only'],
+        ['Absorber', 'Boron carbide; newer VVER clusters add dysprosium titanate at the tip'],
+        ['On a scram', 'Clusters fall under gravity, all the way in within about 4 s'],
+        ['Reactivity from rods now', fmt(S.parts.rods) + ' pcm']
+      ]);
+    }
+    function renderCenter() {
+      titleEl.textContent = 'Central tube';
+      leadEl.textContent = 'The tube in the middle of every assembly. In instrumented assemblies it carries in-core detectors that measure the local neutron flux.';
+      legend.innerHTML = '';
+      refreshCenter();
+    }
+    function refreshCenter() {
+      svgBox.innerHTML = '';
+      const svg = el('svg', { viewBox: '-7.6 -7.6 29.6 15.2', class: 'xs-svg', role: 'img', 'aria-label': 'Central tube cross-section' }, svgBox);
+      el('polygon', { points: hexPts(0, 0, 7.36, 0), class: 'xs-water' }, svg);
+      el('circle', { cx: 0, cy: 0, r: 5.6, class: 'gtube' }, svg);
+      el('circle', { cx: 0, cy: 0, r: 4.9, class: 'xs-water' }, svg);
+      el('circle', { cx: 0, cy: 0, r: 1.9, class: 'aclad' }, svg);
+      leader(svg, 4.9, -2.8, -4.8, 'Central tube');
+      leader(svg, 3.2, 0.6, -1.4, 'Water');
+      leader(svg, 1.2, 1.4, 2.4, 'Detector channel');
+      const k = kq()[core.cells.indexOf(st.cell)];
+      setFacts([
+        ['Detectors', 'Self-powered neutron detectors along the core height'],
+        ['What they read here', 'Relative power ' + fmt(k, 2) + ' at this assembly'],
+        ['Why it matters', 'Operators reconstruct the 3D power map from these signals']
+      ]);
+    }
+
+    /* ---------- navigation ---------- */
+    function show(level, cell, pin) {
+      st.level = level;
+      if (level === 'core') { st.pin = null; }
+      if (cell !== undefined) st.cell = cell;
+      if (pin !== undefined) st.pin = pin;
+      if (level === 'rod' && !st.pin) st.pin = guides[0];
+      if (onSelectCell) onSelectCell(st.cell);
+      setCrumbs();
+      if (level === 'core') renderCore();
+      else if (level === 'assembly') renderAssembly();
+      else renderRod();
+      root.querySelector('.xs-sheet').scrollTop = 0;
+    }
+    function open(level, cell, pin) {
+      if (root.hidden) lastFocus = document.activeElement;
+      root.hidden = false;
+      document.documentElement.classList.add('xs-open');
+      show(level || 'core', cell === undefined ? st.cell : cell, pin === undefined ? null : pin);
+      $('#xsClose').focus({ preventScroll: true });
+    }
+    function close() {
+      root.hidden = true;
+      document.documentElement.classList.remove('xs-open');
+      if (onSelectCell) onSelectCell(null);
+      if (lastFocus && lastFocus.focus) lastFocus.focus({ preventScroll: true });
+    }
+    function tick() {
+      if (root.hidden) return;
+      if (st.level === 'core') refreshCore();
+      else if (st.level === 'assembly') refreshAssembly();
+      else refreshRod();
+    }
+    $('#xsClose').addEventListener('click', close);
+    root.addEventListener('click', e => { if (e.target === root) close(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !root.hidden) close(); });
+    modeBox.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { st.mode = b.dataset.mode; renderCore(); }));
+
+    return { open, close, tick, isOpen: () => !root.hidden, guides };
+  };
+})();
+
+</script>
+<script>
+/* UI wiring and main loop. */
+(function () {
+  'use strict';
+  const $ = s => document.querySelector(s);
+  const P = window.VVERPhysics, C = P.C, clamp = P.clamp;
+  const R = P.createReactor(), S = R.S;
+  const core = P.buildCore();
+  const fmt = (v, d) => { const x = isFinite(v) ? +(+v).toFixed(d || 0) || 0 : 0; return x.toLocaleString('en-US', { maximumFractionDigits: d || 0, minimumFractionDigits: d || 0 }); };
+  let speed = 5, plant = null;
+
+  /* ---------- cross-sections and 3D ---------- */
+  const XS = window.CrossSection({ root: $('#xs'), P, R, core, onSelectCell: c => { if (plant) plant.highlight(c); } });
+  function onView(k) {
+    document.querySelectorAll('.views button').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === k));
+  }
+  function onPick(kind, data) {
+    data = data || {};
+    if (kind === 'assembly') return XS.open('assembly', data.cell, null);
+    if (kind === 'rod') return XS.open('rod', data.cell, XS.guides[0]);
+    if (kind === 'rodinfo') return XS.open('rod', core.cells.find(c => c.group === 'reg'), XS.guides[0]);
+    if (kind === 'vessel') return XS.open('core');
+    showInfo(kind, data);
+  }
+  try {
+    plant = window.Plant3D({ canvas: $('#scene'), stage: $('#stage'), labelsEl: $('#labels'), P, R, core, onPick, onView });
+  } catch (err) {
+    const m = document.createElement('p');
+    m.className = 'trip'; m.style.top = '45%';
+    m.textContent = 'The 3D view needs WebGL, which this browser has turned off. The controls and cross-sections still work.';
+    $('#stage').appendChild(m);
+  }
+  document.querySelectorAll('.views button').forEach(b => b.addEventListener('click', () => plant && plant.setView(b.dataset.view)));
+
+  /* ---------- info cards with live values ---------- */
+  const pe = () => Math.max(0, S.Ps * C.PE_NOM);
+  const loopName = d => (d && d.loop != null ? ' ' + (d.loop + 1) : '');
+  const INFO = {
+    reactor: { title: () => 'Reactor', text: 'Pressure vessel holding 163 fuel assemblies with 3.73 m of fuel height. Water at 16.2 MPa enters near 298 °C and leaves near 325 °C. The blue glow is Cherenkov light: fast electrons outrunning light in water.',
+      live: () => fmt(S.Pth * C.P_NOM) + ' MWt now, coolant in ' + fmt(R.coreIn(), 1) + ' °C, out ' + fmt(R.coreOut(), 1) + ' °C',
+      go: () => ({ label: 'Open core cross-section', act: () => XS.open('core') }) },
+    sg: { title: d => 'Steam generator' + loopName(d), text: 'A horizontal steam generator, a VVER signature; most Western PWRs use vertical U-tubes. Primary water runs through thousands of horizontal tubes and boils the water around them into steam at about 7 MPa.',
+      live: () => 'Transferring ' + fmt(S.qsg * C.P_NOM / 4) + ' MW now' },
+    pump: { title: d => 'Main coolant pump' + loopName(d), text: 'Each pump moves about a quarter of the roughly 86 000 m³/h that flows through the core. A heavy flywheel keeps the flow coasting down slowly if power is lost.',
+      live: d => (d.loop != null ? (S.pumps[d.loop] ? 'Running. ' : 'Stopped. ') : '') + 'Core flow ' + fmt(S.flow * 100) + ' %',
+      go: d => d.loop == null ? null : ({ label: S.pumps[d.loop] ? 'Trip this pump' : 'Start this pump', act: () => { S.pumps[d.loop] = !S.pumps[d.loop]; renderPumps(); } }) },
+    prz: { title: () => 'Pressurizer', text: 'Holds the primary circuit at 16.2 MPa with electric heaters and a water spray, so the coolant never boils in the core. The thin surge line ties it to a hot leg.' },
+    turbine: { title: () => 'Turbine', text: 'A high-pressure and two low-pressure cylinders on one shaft. On the grid it turns at exactly 3000 rpm, 50 Hz, at any load: power changes the steam torque, not the speed. The spin here is slowed for viewing.',
+      live: () => fmt(S.rpm) + ' rpm, ' + (R.onGrid() ? 'on the grid' : 'off the grid') },
+    generator: { title: () => 'Generator', text: 'Turns shaft power into electricity, about 1200 MWe at full load. When the turbine trips the breaker opens and the shaft coasts down.',
+      live: () => fmt(pe()) + ' MWe to the grid' },
+    condenser: { title: () => 'Condenser', text: 'Turns turbine exhaust back into water under vacuum. About two thirds of the reactor heat leaves the plant here.',
+      live: () => 'Rejecting about ' + fmt(Math.max(0, S.qsg * C.P_NOM - pe())) + ' MW' },
+    feedpump: { title: () => 'Feedwater pump', text: 'Pushes condensate back to the steam generators. Heaters and the deaerator are not drawn.' },
+    tower: { title: () => 'Cooling tower', text: 'Rejects the condenser heat to the air. The plume grows and shrinks with the heat being dumped.',
+      live: () => 'About ' + fmt(Math.max(0, S.qsg * C.P_NOM - pe())) + ' MW of waste heat' }
+  };
+  const PIPES = {
+    hot: { t: 'Hot leg', x: 'Carries water from the reactor outlet nozzle straight to the hot collector of the steam generator.', l: () => fmt(R.coreOut(), 1) + ' °C at 16.2 MPa, flow ' + fmt(S.flow * 100) + ' %' },
+    cold: { t: 'Cold leg', x: 'Returns water from the cold collector down through the loop seal and the main coolant pump to the lower nozzle row.', l: () => fmt(R.coreIn(), 1) + ' °C, flow ' + fmt(S.flow * 100) + ' %' },
+    surge: { t: 'Surge line', x: 'Connects the pressurizer to a hot leg so it can absorb the coolant swelling and shrinking as it heats and cools.' },
+    steam: { t: 'Main steam', x: 'Saturated steam at about 7.0 MPa and 286 °C runs from the four steam generators to a header and on to the turbine.', l: () => R.onGrid() ? 'Steam flow ' + fmt(S.Ps * 100) + ' % of full' : 'Turbine off line, ' + fmt(S.qsg * 100) + ' % going to the condenser through dump valves' },
+    xover: { t: 'Crossover pipes', x: 'Carry steam from the high-pressure cylinder to the two low-pressure cylinders. Moisture separator-reheaters sit in between in a real plant; they are not drawn.' },
+    feed: { t: 'Feedwater', x: 'Water pumped back from the condenser, heated to about 225 °C in a real plant and fed to each steam generator from a ring header.', l: () => 'Flow ' + fmt((R.onGrid() ? S.Ps : S.qsg) * 100) + ' % of full' },
+    cw: { t: 'Cooling water', x: 'Large pipes carry condenser cooling water to the cooling tower and back.', l: () => 'About ' + fmt(Math.max(0, S.qsg * C.P_NOM - pe())) + ' MW of heat' },
+    bus: { t: 'Generator busbar', x: 'Carries the generator output to the step-up transformer and the grid.', l: () => fmt(pe()) + ' MWe' }
+  };
+  let infoCur = null;
+  const infoEl = $('#info');
+  function showInfo(kind, data) {
+    infoCur = { kind, data: data || {} };
+    if (kind === 'pipe') {
+      const p = PIPES[data.kind] || { t: 'Pipe', x: '' };
+      $('#infoTitle').textContent = p.t + ((data.kind === 'hot' || data.kind === 'cold') ? ', loop' + loopName(data) : '');
+      $('#infoText').textContent = p.x;
+    } else {
+      const it = INFO[kind]; if (!it) return;
+      $('#infoTitle').textContent = it.title(data || {});
+      $('#infoText').textContent = it.text;
+    }
+    infoEl.hidden = false;
+    refreshInfo();
+  }
+  function refreshInfo() {
+    if (!infoCur || infoEl.hidden) return;
+    const { kind, data } = infoCur;
+    let live = '', go = null;
+    if (kind === 'pipe') { const p = PIPES[data.kind]; live = p && p.l ? p.l() : ''; }
+    else { const it = INFO[kind]; live = it.live ? it.live(data) : ''; go = it.go ? it.go(data) : null; }
+    $('#infoLive').textContent = live;
+    const b = $('#infoGo');
+    b.hidden = !go;
+    if (go) { b.textContent = go.label; b.onclick = go.act; }
+  }
+  $('#infoClose').addEventListener('click', () => { infoEl.hidden = true; infoCur = null; });
+
+  /* ---------- controls ---------- */
+  const rodSet = $('#rodSet');
+  let holding = false;
+  function holdButton(btn, dir) {
+    let t0 = 0, h0 = 0, active = false;
+    btn.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      try { btn.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+      active = holding = true; btn.classList.add('held');
+      t0 = performance.now(); h0 = R.rodHeight();
+      R.setRodHeight(dir > 0 ? 100 : 0);
+    });
+    const end = () => {
+      if (!active) return;
+      active = holding = false; btn.classList.remove('held');
+      if (performance.now() - t0 < 280) R.setRodHeight(clamp(h0 + dir * 5, 0, 100));
+      else R.holdRods();
+    };
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => btn.addEventListener(ev, end));
+    btn.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); R.setRodHeight(clamp(R.targetHeight() + dir * 5, 0, 100)); }
+    });
+    btn.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  holdButton($('#rodUp'), 1);
+  holdButton($('#rodDn'), -1);
+  rodSet.addEventListener('input', () => R.setRodHeight(+rodSet.value));
+  $('#gNom').style.top = (6 + C.X0 * 160) + 'px';
+
+  const pumpsEl = $('#pumps');
+  function renderPumps() {
+    pumpsEl.innerHTML = '';
+    S.pumps.forEach((on, i) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.setAttribute('aria-pressed', on);
+      b.innerHTML = '<i></i>Pump ' + (i + 1);
+      b.addEventListener('click', () => { S.pumps[i] = !S.pumps[i]; renderPumps(); refreshInfo(); });
+      pumpsEl.appendChild(b);
+    });
+  }
+  $('#boron').addEventListener('input', e => { S.boronTarget = +e.target.value; });
+  $('#scram').addEventListener('click', () => R.scram('Scram: manual emergency protection'));
+  $('#turb').addEventListener('click', () => { if (S.online) R.tripTurbine(); else R.startTurbine(); });
+  $('#resetTrip').addEventListener('click', () => R.resetProtection());
+  $('#resetAll').addEventListener('click', () => { R.reset(); $('#boron').value = C.B0; hist.length = 0; renderPumps(); });
+  document.querySelectorAll('.speed button').forEach(b => b.addEventListener('click', () => {
+    speed = +b.dataset.speed;
+    document.querySelectorAll('.speed button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  }));
+  $('#xsOpen').addEventListener('click', () => XS.open('core'));
+
+  /* ---------- readouts ---------- */
+  const lamp = (id, on) => $(id).classList.toggle('on', !!on);
+  function rodMessage() {
+    if (S.scram) return { t: 'Emergency protection holds every rod at the bottom. Press Reset protection to re-arm, then raise the group to restart.', w: true };
+    if (S.block) {
+      let t = S.block + '.';
+      if (S.sdX > 0.001) t = 'Shutdown banks withdrawing, ' + fmt(S.sdX * 100) + ' % in. The regulating group moves once they are out.';
+      return { t, w: S.block.indexOf('Waiting') < 0 };
+    }
+    const moving = Math.abs(S.rodTarget - S.rodX) > 0.002;
+    if (moving) return { t: (S.rodTarget < S.rodX ? 'Raising' : 'Lowering') + ' to ' + fmt(R.targetHeight()) + ' %. Power follows as feedback catches up.' };
+    if (S.n < 1e-3) return { t: 'Subcritical. Raise the group to restart: neutron power climbs through several decades before any heat shows, so try 20× time.' };
+    return { t: 'Hold Raise or Lower to drive the rods, or tap for a 5 % step.' };
+  }
+  function updateUI() {
+    $('#pth').textContent = fmt(S.Pth * C.P_NOM); $('#pe').textContent = fmt(pe());
+    $('#pthBar').style.width = clamp(S.Pth / 1.15, 0, 1) * 100 + '%';
+    $('#peBar').style.width = clamp(S.Ps / 1.15, 0, 1) * 100 + '%';
+    $('#rho').textContent = (S.rho > 0.5 ? '+' : '') + fmt(S.rho) + ' pcm';
+    $('#per').textContent = !isFinite(S.period) || Math.abs(S.period) > 999 ? '∞' : fmt(S.period, 1) + ' s';
+    $('#flow').textContent = fmt(S.flow * 100) + ' %';
+    $('#tin').textContent = fmt(R.coreIn(), 1) + ' °C';
+    $('#tout').textContent = fmt(R.coreOut(), 1) + ' °C';
+    $('#tf').textContent = fmt(S.Tf) + ' °C';
+    $('#rpm').textContent = fmt(S.rpm) + ' rpm';
+    $('#dh').textContent = fmt(R.decayHeat() * 100, 2) + ' %';
+    $('#bor').textContent = fmt(S.boron) + ' ppm';
+    const np = S.n * 100;
+    $('#npow').textContent = np >= 0.1 ? fmt(np, np >= 10 ? 0 : 1) + ' %' : np.toExponential(1) + ' %';
+    $('#nbar').style.width = clamp((Math.log10(S.n) + 8) / 8, 0, 1) * 100 + '%';
+
+    lamp('#lCrit', !S.scram && Math.abs(S.rho) < 15 && S.n > 1e-4);
+    lamp('#lAZ', S.scram);
+    lamp('#lGrid', R.onGrid());
+    lamp('#lBlock', !!S.block && S.block.indexOf('Waiting') < 0);
+
+    $('#rodPos').textContent = fmt(R.rodHeight()) + ' %';
+    $('#gRod').style.height = (R.regX() * 160) + 'px';
+    $('#gSd').style.height = (S.sdX * 160) + 'px';
+    const tg = $('#gTgt');
+    tg.style.display = holding ? 'none' : '';
+    tg.style.top = (6 + S.rodTarget * 160) + 'px';
+    if (document.activeElement !== rodSet) rodSet.value = Math.round(holding ? R.rodHeight() : R.targetHeight());
+    $('#rodTgtTxt').textContent = holding ? 'Moving' : 'Target ' + fmt(R.targetHeight()) + ' %';
+    const m = rodMessage(), rm = $('#rodMsg');
+    rm.textContent = m.t; rm.classList.toggle('warn', !!m.w);
+
+    $('#boronVal').textContent = fmt(S.boronTarget) + ' ppm';
+    $('#boronSub').textContent = 'Now ' + fmt(S.boron) + ' ppm, changing 1.5 ppm/s, about −12 pcm per ppm.';
+    const p = S.parts, row = (k, v, c) => '<dt' + (c ? ' class="sum"' : '') + '>' + k + '</dt><dd' + (c ? ' class="sum"' : '') + '>' + (v > 0.5 ? '+' : '') + fmt(v) + ' pcm</dd>';
+    $('#rhoList').innerHTML = row('Control rods', p.rods) + row('Boric acid', p.boron) + row('Doppler (fuel)', p.dop) + row('Moderator', p.mod) + row('Net reactivity', S.rho, true);
+
+    const tb = $('#turb');
+    tb.textContent = S.online ? 'Trip turbine' : 'Start turbine';
+    tb.disabled = !S.online && (S.scram || S.Pth <= 0.08);
+    $('#resetTrip').disabled = !S.scram;
+    const tr = $('#trip'); tr.hidden = !S.trip; tr.textContent = S.trip;
+    document.querySelectorAll('#pumps button').forEach((b, i) => b.setAttribute('aria-pressed', S.pumps[i]));
+  }
+
+  /* ---------- power history ---------- */
+  const hist = []; let histAcc = 0;
+  const plot = $('#plot'), pg = plot.getContext('2d'), fis = $('#fis'), fg = fis.getContext('2d');
+  function sizeCanvases() {
+    const d = Math.min(window.devicePixelRatio || 1, 2);
+    [plot, fis].forEach(c => { c.width = Math.round(c.clientWidth * d); c.height = Math.round(c.clientHeight * d); });
+  }
+  function sample(simDt) {
+    histAcc += simDt;
+    const every = 0.5 * Math.max(1, speed / 2.5);
+    if (histAcc >= every) {
+      hist.push({ th: S.Pth * C.P_NOM, el: pe(), dt: histAcc }); histAcc = 0;
+      if (hist.length > 240) hist.shift();
+    }
+  }
+  function drawPlot() {
+    const cs = getComputedStyle(document.documentElement), W = plot.width, Hh = plot.height;
+    if (!W) return;
+    const d = W / plot.clientWidth;
+    pg.clearRect(0, 0, W, Hh);
+    pg.strokeStyle = cs.getPropertyValue('--rule'); pg.lineWidth = 1;
+    pg.fillStyle = cs.getPropertyValue('--ink-2'); pg.font = (11 * d) + 'px Barlow, sans-serif';
+    [0, 1000, 2000, 3000].forEach(v => {
+      const y = Hh - 8 * d - (v / 3700) * (Hh - 16 * d);
+      pg.beginPath(); pg.moveTo(34 * d, y); pg.lineTo(W, y); pg.stroke(); pg.fillText(v, 4 * d, y + 4 * d);
+    });
+    const N = 240;
+    [['th', cs.getPropertyValue('--hot')], ['el', cs.getPropertyValue('--steam')]].forEach(([k, col]) => {
+      pg.strokeStyle = col; pg.lineWidth = 2 * d; pg.beginPath();
+      hist.forEach((h, i) => {
+        const x = 34 * d + (i + N - hist.length) / (N - 1) * (W - 36 * d), y = Hh - 8 * d - (h[k] / 3700) * (Hh - 16 * d);
+        if (i) pg.lineTo(x, y); else pg.moveTo(x, y);
+      });
+      pg.stroke();
+    });
+    const span = hist.reduce((a, h) => a + h.dt, 0);
+    $('#plotSpan').textContent = span > 0 ? 'last ' + (span >= 120 ? fmt(span / 60, 1) + ' min' : fmt(span) + ' s') + ' of plant time' : '';
+  }
+
+  /* ---------- fission close-up ---------- */
+  const FW = 320, FH = 180, nuc = [], neu = [], frag = [], flash = [];
+  let seed = 11; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  for (let i = 0; i < 12; i++) for (let j = 0; j < 6; j++) nuc.push({ x: 18 + i * 23 + (rnd() - 0.5) * 8, y: 20 + j * 28 + (rnd() - 0.5) * 8, u5: rnd() < 0.25, cd: 0 });
+  let fisAcc = 0;
+  function fission() {
+    const c = nuc.filter(n => n.u5 && n.cd <= 0); if (!c.length) return;
+    const n = c[Math.floor(Math.random() * c.length)];
+    n.cd = 2.2; flash.push({ x: n.x, y: n.y, life: 1, big: true });
+    const a = Math.random() * Math.PI * 2;
+    [1, -1].forEach(sg => frag.push({ x: n.x, y: n.y, vx: Math.cos(a) * 60 * sg, vy: Math.sin(a) * 60 * sg, life: 0.8 }));
+    const k = Math.random() < 0.45 ? 3 : 2;
+    for (let i = 0; i < k; i++) { const b = Math.random() * Math.PI * 2; neu.push({ x: n.x, y: n.y, vx: Math.cos(b) * 140, vy: Math.sin(b) * 140, life: 1.6 }); }
+  }
+  function updateFis(dt) {
+    if (!fis.width) return;
+    fisAcc += Math.min(S.n, 1.3) * 9 * dt;
+    while (fisAcc > 1) { fisAcc -= 1; fission(); }
+    if (Math.random() < Math.min(S.n, 1.3) * 2 * dt) fission();
+    const rodY = R.regX() * FH;
+    nuc.forEach(n => { n.cd -= dt; });
+    for (let i = neu.length - 1; i >= 0; i--) {
+      const p = neu[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
+      if (p.x > 292 && p.x < 306 && p.y < rodY) { flash.push({ x: p.x, y: p.y, life: 0.5 }); neu.splice(i, 1); continue; }
+      if (p.life <= 0 || p.x < 0 || p.x > FW || p.y < 0 || p.y > FH) neu.splice(i, 1);
+    }
+    for (let i = frag.length - 1; i >= 0; i--) { const p = frag[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; if (p.life <= 0) frag.splice(i, 1); }
+    for (let i = flash.length - 1; i >= 0; i--) { flash[i].life -= dt * 2.2; if (flash[i].life <= 0) flash.splice(i, 1); }
+    const d = fis.width / FW; fg.setTransform(d, 0, 0, d, 0, 0);
+    fg.fillStyle = '#0b1418'; fg.fillRect(0, 0, FW, FH);
+    const cg = clamp(Math.sqrt(S.n), 0, 1);
+    fg.fillStyle = 'rgba(60,160,255,' + (0.04 + 0.14 * cg) + ')'; fg.fillRect(0, 0, FW, FH);
+    nuc.forEach(n => {
+      fg.beginPath(); fg.arc(n.x, n.y, n.u5 ? 5 : 4.2, 0, 7);
+      fg.fillStyle = n.u5 ? (n.cd > 0 ? 'rgba(242,154,64,.18)' : '#f29a40') : '#5d6a70'; fg.fill();
+    });
+    fg.fillStyle = '#232a2e'; fg.fillRect(292, 0, 14, rodY); fg.fillStyle = '#ffc83a'; fg.fillRect(292, rodY - 3, 14, 3);
+    frag.forEach(p => { fg.beginPath(); fg.arc(p.x, p.y, 3.4, 0, 7); fg.fillStyle = 'rgba(255,120,80,' + p.life + ')'; fg.fill(); });
+    neu.forEach(p => { fg.beginPath(); fg.arc(p.x, p.y, 1.9, 0, 7); fg.fillStyle = 'rgba(235,245,255,' + Math.min(1, p.life) + ')'; fg.fill(); });
+    flash.forEach(f => {
+      const r = (f.big ? 16 : 7) * (1.2 - f.life);
+      fg.beginPath(); fg.arc(f.x, f.y, r, 0, 7);
+      fg.fillStyle = f.big ? 'rgba(255,230,170,' + f.life * 0.8 + ')' : 'rgba(170,190,200,' + f.life * 0.6 + ')'; fg.fill();
+    });
+  }
+
+  /* ---------- resize, links, loop ---------- */
+  function resizeAll() { if (plant) plant.resize(); sizeCanvases(); }
+  const ro = new ResizeObserver(resizeAll);
+  ro.observe($('#stage')); ro.observe(plot);
+  function applyHash() {
+    const h = location.hash.slice(1);
+    if (h === 'sections') XS.open('core');
+    else if (plant && plant.views[h]) plant.setView(h, true);
+  }
+  window.addEventListener('hashchange', applyHash);
+
+  renderPumps(); resizeAll(); applyHash();
+  let last = performance.now(), uiT = 1, plotT = 1, xsT = 0, infoT = 0;
+  function frame(now) {
+    const rdt = Math.min(0.05, Math.max(0, (now - last) / 1000)); last = now;
+    const simDt = rdt * speed;
+    R.advance(simDt); sample(simDt);
+    if (plant) plant.update(rdt);
+    updateFis(rdt);
+    uiT += rdt; if (uiT > 0.1) { uiT = 0; updateUI(); }
+    plotT += rdt; if (plotT > 0.25) { plotT = 0; drawPlot(); }
+    xsT += rdt; if (xsT > 0.5) { xsT = 0; XS.tick(); }
+    infoT += rdt; if (infoT > 0.3) { infoT = 0; refreshInfo(); }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+  window.VVERSim = { R, S, core, XS, get plant() { return plant; } };
+})();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VVER-1200 plant simulator</title>
+<meta name="description" content="Interactive 3D VVER-1200 nuclear power plant: point-kinetics reactor model, control rods, primary and secondary circuits, turbine and core cross-sections.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app">
+  <section class="stage" id="stage" aria-label="3D plant view">
+    <canvas id="scene"></canvas>
+    <div class="labels" id="labels"></div>
+    <nav class="views" aria-label="Camera views">
+      <button type="button" data-view="overview" aria-pressed="true">Whole plant</button>
+      <button type="button" data-view="core">Reactor core</button>
+      <button type="button" data-view="steam">Steam generators</button>
+      <button type="button" data-view="turbine">Turbine hall</button>
+    </nav>
+    <div class="trip" id="trip" hidden></div>
+    <div class="info" id="info" hidden>
+      <button type="button" class="x" id="infoClose" aria-label="Close">×</button>
+      <h3 id="infoTitle"></h3>
+      <p id="infoText"></p>
+      <div class="live" id="infoLive"></div>
+      <button type="button" class="go" id="infoGo" hidden></button>
+    </div>
+    <p class="hint">Drag to look around, pinch or scroll to zoom. Tap the reactor, a fuel assembly or a control rod to open its cross-section.</p>
+  </section>
+
+  <aside class="panel">
+    <div class="head">
+      <h1>VVER-1200 plant simulator</h1>
+      <p>Drive the control rods, trip pumps, scram the reactor and follow the heat all the way to the grid.</p>
+    </div>
+    <div class="pipes-key" aria-label="Pipe colours">
+      <span><i style="background:var(--hot)"></i>Hot leg</span>
+      <span><i style="background:var(--cold)"></i>Cold leg</span>
+      <span><i style="background:var(--steam)"></i>Steam</span>
+      <span><i style="background:var(--feed)"></i>Feedwater</span>
+      <span><i style="background:var(--cw)"></i>Cooling water</span>
+    </div>
+
+    <div class="big">
+      <div class="meter th"><div class="k">Thermal power</div><div class="v"><span id="pth">3200</span><small>MWt</small></div><div class="bar"><i id="pthBar"></i></div></div>
+      <div class="meter el"><div class="k">Electrical power</div><div class="v"><span id="pe">1200</span><small>MWe</small></div><div class="bar"><i id="peBar"></i></div></div>
+    </div>
+    <div class="small">
+      <div><span class="k">Reactivity</span><span class="v" id="rho">0 pcm</span></div>
+      <div><span class="k">Reactor period</span><span class="v" id="per">∞</span></div>
+      <div><span class="k">Core flow</span><span class="v" id="flow">100 %</span></div>
+      <div><span class="k">Core inlet</span><span class="v" id="tin">298 °C</span></div>
+      <div><span class="k">Core outlet</span><span class="v" id="tout">325 °C</span></div>
+      <div><span class="k">Fuel average</span><span class="v" id="tf">900 °C</span></div>
+      <div><span class="k">Turbine speed</span><span class="v" id="rpm">3000 rpm</span></div>
+      <div><span class="k">Decay heat</span><span class="v" id="dh">6.5 %</span></div>
+      <div><span class="k">Boric acid</span><span class="v" id="bor">600 ppm</span></div>
+    </div>
+    <div class="logm">
+      <div class="row"><span>Neutron power, log scale</span><b id="npow">100 %</b></div>
+      <div class="track"><i id="nbar"></i></div>
+      <div class="scale"><span>10⁻⁶ %</span><span>10⁻⁴ %</span><span>10⁻² %</span><span>1 %</span><span>100 %</span></div>
+    </div>
+
+    <div class="lamps">
+      <div class="lamp" id="lCrit" style="--c:#43c46f"><i></i>Reactor critical</div>
+      <div class="lamp" id="lAZ" style="--c:#ff3b2f"><i></i>Emergency protection</div>
+      <div class="lamp" id="lGrid" style="--c:#ffc83a"><i></i>Generator on grid</div>
+      <div class="lamp" id="lBlock" style="--c:#ff9d2e"><i></i>Rod withdrawal blocked</div>
+    </div>
+
+    <section class="block">
+      <h2>Control rods</h2>
+      <div class="rodctl">
+        <div class="gauge" aria-hidden="true">
+          <div class="core"></div>
+          <div class="rod" id="gRod"></div>
+          <div class="sd" id="gSd"></div>
+          <div class="tgt" id="gTgt"></div>
+          <div class="nom" id="gNom"></div>
+        </div>
+        <div class="rodside">
+          <div class="rodpos"><b id="rodPos">70 %</b><span>regulating group, % of core height (100 % = fully withdrawn)</span></div>
+          <div class="rodbtns">
+            <button type="button" id="rodUp" aria-label="Raise rods. Hold to move, tap for a 5 percent step">▲ Raise</button>
+            <button type="button" id="rodDn" aria-label="Lower rods. Hold to move, tap for a 5 percent step">▼ Lower</button>
+          </div>
+          <div class="rangewrap">
+            <input type="range" id="rodSet" min="0" max="100" step="1" value="70" aria-label="Regulating group target position, percent of core height">
+            <div class="ends"><span>Bottom</span><span id="rodTgtTxt">Target 70 %</span><span>Top</span></div>
+          </div>
+        </div>
+      </div>
+      <p class="rodmsg" id="rodMsg">Hold Raise or Lower to drive the rods, or tap for a 5 % step.</p>
+
+      <div class="ctl">
+        <label for="boron">Boric acid in coolant <b id="boronVal">600 ppm</b></label>
+        <input type="range" id="boron" min="450" max="750" step="5" value="600">
+        <div class="sub" id="boronSub">Slow chemical control, about −12 pcm per ppm.</div>
+      </div>
+      <div class="ctl">
+        <label>Main coolant pumps</label>
+        <div class="pumps" id="pumps"></div>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn scram" id="scram">Scram (АЗ)</button>
+        <button type="button" class="btn" id="turb">Trip turbine</button>
+        <button type="button" class="btn" id="resetTrip" disabled>Reset protection</button>
+        <button type="button" class="btn" id="resetAll" style="grid-column:1/-1">Return to full power</button>
+      </div>
+      <div class="speed">Plant time
+        <button type="button" data-speed="1" aria-pressed="false">1×</button>
+        <button type="button" data-speed="5" aria-pressed="true">5×</button>
+        <button type="button" data-speed="20" aria-pressed="false">20×</button>
+      </div>
+      <dl class="rho" id="rhoList"></dl>
+    </section>
+
+    <section class="block">
+      <h2>Cross-sections</h2>
+      <p class="note">Open the core map, then tap through to any assembly and any rod. Values update live with the reactor.</p>
+      <button type="button" class="btn xsopen" id="xsOpen">Open core cross-section</button>
+    </section>
+
+    <section class="block">
+      <h2>Power history</h2>
+      <canvas class="plot" id="plot"></canvas>
+      <div class="legend"><span><i style="background:var(--hot)"></i>Thermal, MWt</span><span><i style="background:var(--steam)"></i>Electrical, MWe</span><span id="plotSpan"></span></div>
+    </section>
+
+    <section class="block">
+      <h2>Inside a fuel pellet</h2>
+      <canvas class="fis" id="fis"></canvas>
+      <p class="note">Orange: U-235, grey: U-238, white: neutrons. The dark bar is an absorber rod that reaches down as you lower the rods. At full power the real core splits about 10²⁰ nuclei every second.</p>
+    </section>
+
+    <details>
+      <summary>How this model works</summary>
+      <p>Reactor power comes from point kinetics with six delayed-neutron groups for U-235 (β = 650 pcm, Λ = 20 µs) and a weak neutron source. Feedback is Doppler (−2.2 pcm/K on average fuel temperature) and moderator (−25 pcm/K on average coolant temperature), worth about 2000 pcm between hot zero power and full power.</p>
+      <p>Heat flows through two lumps, fuel and coolant, to steam generators held at 7.0 MPa (285.8 °C). Decay heat is three exponential groups totalling 6.5 % of fission power. Electrical output is 37.5 % of the heat leaving the steam generators, so 3200 MWt gives 1200 MWe.</p>
+      <p>Interlocks follow VVER practice in simplified form: rod withdrawal is blocked below a 20 s period, above 104 % power or above 330 °C core outlet, and the reactor scrams on 112 % power, 335 °C outlet, a 10 s period in the startup range, or loss of two coolant pumps.</p>
+      <p>The cross-sections use the TVS-2006 assembly geometry. Rod temperatures come from a steady conduction solution with temperature-dependent UO₂ conductivity (Fink 2000), a 6000 W/m²·K gap and Zr-1%Nb cladding, at the mid-plane with an axial factor of 1.3. The loading pattern and control cluster map are illustrative, not a real VVER-1200 core design.</p>
+      <p>This is a teaching model, not plant-simulator practice. Real VVER analysis couples 3D nodal neutronics to system codes such as KORSAR or RELAP. The regulating group is worth 3000 pcm here so rods alone can cover the power defect; real plants share that job with boric acid. Rods move at 1 % of core height per second, about twice real speed. The turbine spin is slowed for viewing; on the grid it always turns at 3000 rpm.</p>
+    </details>
+  </aside>
+</div>
+
+<div class="xs" id="xs" hidden role="dialog" aria-modal="true" aria-labelledby="xsTitle">
+  <div class="xs-sheet">
+    <header class="xs-head">
+      <nav class="crumbs" id="xsCrumbs" aria-label="Cross-section level"></nav>
+      <button type="button" class="xs-close" id="xsClose" aria-label="Close cross-section">×</button>
+    </header>
+    <div class="xs-body">
+      <div class="xs-draw">
+        <div class="xs-mode" id="xsMode">
+          <button type="button" data-mode="power" aria-pressed="true">Power</button>
+          <button type="button" data-mode="loading" aria-pressed="false">Fuel loading</button>
+        </div>
+        <div id="xsDraw"></div>
+        <div id="xsChart" hidden></div>
+        <div class="xs-legend" id="xsLegend"></div>
+      </div>
+      <div class="xs-info">
+        <h2 id="xsTitle"></h2>
+        <p id="xsLead"></p>
+        <dl id="xsFacts"></dl>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="js/physics.js"></script>
+<script src="js/scene.js"></script>
+<script src="js/xsection.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
