@@ -86,7 +86,8 @@
     /* ---------- core map ---------- */
     function renderCore() {
       svgBox.innerHTML = ''; chartBox.innerHTML = ''; chartBox.hidden = true;
-      const svg = el('svg', { viewBox: '-8.2 -7.3 16.4 14.6', class: 'xs-svg', role: 'img', 'aria-label': 'Core cross-section with 163 fuel assemblies' }, svgBox);
+      const svg = el('svg', { viewBox: '-8.2 -8.2 16.4 16.4', class: 'xs-svg', role: 'img', 'aria-label': 'Core cross-section with 163 fuel assemblies' }, svgBox);
+      el('circle', { cx: 0, cy: 0, r: 7.9, class: 'xs-pool' }, svg);
       el('circle', { cx: 0, cy: 0, r: 7.9, class: 'xs-barrel' }, svg);
       const Rh = 1 / Math.sqrt(3) * 0.97;
       refs = { hex: [] };
@@ -137,8 +138,9 @@
       pins.forEach(p => {
         const g = el('g', { class: 'xs-hit' }, svg);
         if (p.type === 'fuel' || p.type === 'gd') {
+          // cladding tube with the pellet inside; the pellet carries the power colour
           const c = el('circle', { cx: p.x, cy: p.y, r: 4.55, class: p.type === 'gd' ? 'pin gd' : 'pin' }, g);
-          refs.pins.push({ c, p });
+          refs.pins.push({ c: el('circle', { cx: p.x, cy: p.y, r: 3.8, class: 'pel' }, g), p });
           if (p === st.pin) c.classList.add('sel');
         } else if (p.type === 'guide') {
           el('circle', { cx: p.x, cy: p.y, r: 6.3, class: 'guide' + (p === st.pin ? ' sel' : '') }, g);

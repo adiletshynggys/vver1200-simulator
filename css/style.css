@@ -174,9 +174,11 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
 .xs-svg .hx.sel{stroke:var(--focus);stroke-width:3px}
 .xs-svg .dot-reg{fill:#ffc83a;stroke:#1c2520;stroke-width:.8px}
 .xs-svg .dot-sd{fill:#20282c;stroke:#e6eee8;stroke-width:.6px}
-.xs-svg .xs-barrel{fill:none;stroke:var(--xs-line);stroke-width:1.5px;stroke-dasharray:5 4}
+.xs-svg .xs-pool{fill:var(--water)}
+.xs-svg .xs-barrel{fill:none;stroke:var(--steel);stroke-width:3px}
 .xs-svg .xs-water{fill:var(--water);stroke:var(--xs-line);stroke-width:1px}
-.xs-svg .pin{stroke:rgba(60,40,20,.45);stroke-width:.6px}
+.xs-svg .pin{fill:var(--clad);stroke:var(--xs-line);stroke-width:.6px}
+.xs-svg .pel{pointer-events:none}
 .xs-svg .pin.gd{stroke:var(--gd);stroke-width:2.2px}
 .xs-svg .sel{stroke:var(--focus) !important;stroke-width:3px !important}
 .xs-svg .guide{fill:var(--water);stroke:var(--steel);stroke-width:1.8px}

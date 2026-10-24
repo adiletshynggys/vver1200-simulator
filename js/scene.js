@@ -12,13 +12,39 @@
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0b1216);
     scene.fog = new THREE.Fog(0x0b1216, 170, 420);
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 800);
-    scene.add(new THREE.HemisphereLight(0xc8dae8, 0x1b2621, 0.85));
-    const sun = new THREE.DirectionalLight(0xffffff, 0.75);
-    sun.position.set(60, 90, 70); scene.add(sun);
+    scene.add(new THREE.HemisphereLight(0xc8dae8, 0x1b2621, 0.55));
+    const sun = new THREE.DirectionalLight(0xfff4e6, 0.95);
+    sun.position.set(105, 100, 65); sun.target.position.set(45, 0, -5);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    Object.assign(sun.shadow.camera, { left: -95, right: 95, top: 95, bottom: -95, near: 1, far: 320 });
+    sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.04;
+    scene.add(sun, sun.target);
+
+    // soft studio sky for reflections, so steel reads as metal rather than flat grey
+    (function () {
+      const env = new THREE.Scene();
+      const geo = new THREE.SphereGeometry(50, 32, 16), pos = geo.attributes.position, cols = [];
+      const top = new THREE.Color(0xa9bfcf), hor = new THREE.Color(0x4b5a62), bot = new THREE.Color(0x111816), c = new THREE.Color();
+      for (let i = 0; i < pos.count; i++) {
+        const y = pos.getY(i) / 50;
+        if (y > 0) c.copy(hor).lerp(top, Math.pow(y, 0.6)); else c.copy(hor).lerp(bot, Math.min(1, -y * 3));
+        cols.push(c.r, c.g, c.b);
+      }
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+      env.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+      const box = new THREE.Mesh(new THREE.PlaneGeometry(40, 18), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+      box.position.set(20, 38, 22); box.lookAt(0, 0, 0); env.add(box);
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      scene.environment = pmrem.fromScene(env, 0.03).texture;
+      pmrem.dispose();
+    })();
 
     const Y = new THREE.Vector3(0, 1, 0);
     const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -108,7 +134,7 @@
     }
 
     /* ---------- containment ---------- */
-    const contMat = new THREE.MeshBasicMaterial({ color: 0x9fb6c4, transparent: true, opacity: 0.05, side: THREE.DoubleSide, depthWrite: false });
+    const contMat = new THREE.MeshBasicMaterial({ color: 0x9fb6c4, transparent: true, opacity: 0.06, depthWrite: false });
     add(new THREE.CylinderGeometry(16, 16, 26, 64, 1, true), contMat, V(0, 13, 0));
     add(new THREE.SphereGeometry(16, 48, 16, 0, Math.PI * 2, 0, Math.PI / 2), contMat, V(0, 26, 0));
     const ringMat = new THREE.LineBasicMaterial({ color: 0x5d7684, transparent: true, opacity: 0.45 });
@@ -125,6 +151,10 @@
     add(new THREE.SphereGeometry(2.25, 40, 12, 0.8 * Math.PI, GAPL, Math.PI / 2, Math.PI / 2), steel, V(0, 3, 0), 'vessel').scale.y = 0.6;
     add(new THREE.SphereGeometry(2.25, 40, 12, 0.8 * Math.PI, GAPL, 0, Math.PI / 2), steel, V(0, 13, 0), 'vessel').scale.y = 0.6;
     add(new THREE.CylinderGeometry(1.98, 1.98, 6.2, 40, 1, true, GAP0, GAPL), M(0x6f7a80, { side: THREE.DoubleSide }), V(0, 5.9, 0), 'vessel');
+    // give the vessel wall its thickness: an inner skin and light cut faces along the cutaway
+    add(new THREE.CylinderGeometry(2.05, 2.05, 10, 48, 1, true, GAP0, GAPL), M(0x5d676c, { side: THREE.DoubleSide }), V(0, 8, 0));
+    const cutMat = M(0xd3dadd, { metalness: 0.2, roughness: 0.55 });
+    [GAP0, GAP0 + GAPL].forEach(th => { add(new THREE.BoxGeometry(0.02, 10, 0.2), cutMat, V(2.15 * Math.sin(th), 8, 2.15 * Math.cos(th))).rotation.y = th; });
 
     const waterMat = new THREE.MeshBasicMaterial({ color: 0x2c8cff, transparent: true, opacity: 0.08, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
     add(new THREE.CylinderGeometry(2.15, 2.15, 9.6, 40, 1, false), waterMat, V(0, 7.9, 0));
@@ -195,7 +225,11 @@
     }
 
     /* ---------- four primary loops ---------- */
-    const sgShellMat = M(0xa9b4b9, { transparent: true, opacity: 0.26, side: THREE.DoubleSide, depthWrite: false });
+    // steam generator shells are solid, cut open along the top so the tube bundle shows
+    const sgShellMat = M(0x9aa6ac, { side: THREE.DoubleSide, metalness: 0.55, roughness: 0.48, envMapIntensity: 0.7 });
+    const SG_GAP = 0.42 * Math.PI;
+    const sgShellGeo = new THREE.CylinderGeometry(2, 2, 12, 40, 1, true, SG_GAP, 2 * Math.PI - 2 * SG_GAP);
+    const sgCapGeo = [0, Math.PI / 2].map(t0 => new THREE.SphereGeometry(2, 32, 12, Math.PI / 2 + SG_GAP, 2 * Math.PI - 2 * SG_GAP, t0, Math.PI / 2));
     const sgTubeMat = new THREE.MeshBasicMaterial({ color: 0xd8794a });
     const sgTubes = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05, 0.05, 10.4, 6), sgTubeMat, 4 * 5 * 7);
     let tI = 0;
@@ -205,8 +239,13 @@
       const a = deg * Math.PI / 180, n = V(Math.sin(a), 0, Math.cos(a)), t = V(Math.cos(a), 0, -Math.sin(a));
       const c = n.clone().multiplyScalar(9.5).setY(15); sgCenters.push(c);
       const qT = new THREE.Quaternion().setFromUnitVectors(Y, t);
-      const shell = add(new THREE.CylinderGeometry(2, 2, 12, 32, 1, true), sgShellMat, c, 'sg'); shell.quaternion.copy(qT); shell.userData.loop = k;
-      [-6, 6].forEach(o => { add(new THREE.SphereGeometry(2, 24, 12), sgShellMat, c.clone().addScaledVector(t, o), 'sg').userData.loop = k; });
+      // local y along the shell axis, local z (the opening) pointing up
+      const qSG = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(t.clone().cross(Y), t, Y));
+      const shell = add(sgShellGeo, sgShellMat, c, 'sg'); shell.quaternion.copy(qSG); shell.userData.loop = k;
+      [6, -6].forEach((o, j) => {
+        const cap = add(sgCapGeo[j], sgShellMat, c.clone().addScaledVector(t, o), 'sg');
+        cap.quaternion.copy(qSG); cap.userData.loop = k;
+      });
       for (let j = 0; j < 5; j++) for (let m = -3; m <= 3; m++) {
         mtx.compose(c.clone().addScaledVector(n, m * 0.4).setY(c.y - 1.4 + j * 0.32), qT, one);
         sgTubes.setMatrixAt(tI++, mtx);
@@ -272,15 +311,19 @@
     hall.position.set(54, 11, 0); scene.add(hall);
     add(new THREE.BoxGeometry(50, 0.3, 26), M(0x2a3832, { metalness: 0, roughness: 1, transparent: true, opacity: 0.45, depthWrite: false }), V(54, 4.2, 0));
     const casingLo = M(0x8c979c, { side: THREE.DoubleSide });
-    const casingHi = M(0xa9b6bb, { transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false });
+    const casingHi = M(0xa9b6bb, { transparent: true, opacity: 0.1, depthWrite: false });
+    const flangeMat = M(0x9aa6ab, { metalness: 0.7, roughness: 0.3 });
+    function flange(x, r) { add(new THREE.TorusGeometry(r, 0.14, 8, 40), flangeMat, V(x, 8, 0)).rotation.y = Math.PI / 2; }
     function casing(x0, x1, r0, r1) {
       const L = x1 - x0, cx = (x0 + x1) / 2;
       add(new THREE.CylinderGeometry(r1, r0, L, 32, 1, true, 0, Math.PI), casingLo, V(cx, 8, 0), 'turbine').rotation.z = -Math.PI / 2;
       add(new THREE.CylinderGeometry(r1, r0, L, 32, 1, true, Math.PI, Math.PI), casingHi, V(cx, 8, 0)).rotation.z = -Math.PI / 2;
+      flange(x0, r0); flange(x1, r1);
     }
     casing(33, 39.5, 2.0, 2.6); casing(42, 50, 3.8, 3.8); casing(53, 61, 3.8, 3.8);
     add(new THREE.CylinderGeometry(2.6, 2.6, 9, 32, 1, true, 0, Math.PI), M(0x4a6a58, { side: THREE.DoubleSide }), V(68, 8, 0), 'generator').rotation.z = -Math.PI / 2;
-    add(new THREE.CylinderGeometry(2.6, 2.6, 9, 32, 1, true, Math.PI, Math.PI), M(0x6c9a80, { transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false }), V(68, 8, 0)).rotation.z = -Math.PI / 2;
+    add(new THREE.CylinderGeometry(2.6, 2.6, 9, 32, 1, true, Math.PI, Math.PI), M(0x6c9a80, { transparent: true, opacity: 0.12, depthWrite: false }), V(68, 8, 0)).rotation.z = -Math.PI / 2;
+    flange(63.5, 2.6); flange(72.5, 2.6);
     add(new THREE.CylinderGeometry(1.1, 1.1, 2, 24), M(0x4a6a58), V(74, 8, 0), 'generator').rotation.z = Math.PI / 2;
 
     const rotor = new THREE.Group(); rotor.position.set(0, 8, 0); scene.add(rotor);
@@ -318,7 +361,7 @@
 
     const tp = [];
     for (let y = 0; y <= 52; y += 2) tp.push(new THREE.Vector2(9 * Math.sqrt(1 + Math.pow((y - 38) / 22, 2)), y));
-    add(new THREE.LatheGeometry(tp, 56), M(0xa9aea8, { metalness: 0, roughness: 0.95, side: THREE.DoubleSide }), V(110, 0, -42), 'tower');
+    add(new THREE.LatheGeometry(tp, 56), M(0x656c68, { metalness: 0, roughness: 1, envMapIntensity: 0.25, side: THREE.DoubleSide }), V(110, 0, -42), 'tower');
     const plume = [];
     for (let i = 0; i < 16; i++) {
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0xe8eef2, transparent: true, depthWrite: false, opacity: 0.3 }));
@@ -346,6 +389,12 @@
     scene.add(pulses);
     const pv = V(0, 0, 0), pscale = V(1, 1, 1);
 
+    // every solid lit surface casts and takes shadow; glass, glow and the ground plane do not cast
+    scene.traverse(o => {
+      if (!o.isMesh || !o.material || !o.material.isMeshStandardMaterial || o.material.transparent) return;
+      o.castShadow = o !== ground; o.receiveShadow = true;
+    });
+
     /* ---------- labels ---------- */
     const labels = [
       { name: 'Reactor', pos: V(0, 18.6, 0), pick: 'reactor', view: 'core', maxR: 400 },
@@ -370,21 +419,29 @@
       labelsEl.appendChild(b); l.el = b;
     });
     const lp = V(0, 0, 0);
+    // labels are placed in list order; one that would overlap an already placed label is hidden
     function updateLabels() {
-      const w = canvas.clientWidth, h = canvas.clientHeight;
+      const w = canvas.clientWidth, h = canvas.clientHeight, placed = [];
       labels.forEach(l => {
         lp.copy(l.pos).project(camera);
-        const vis = lp.z < 1 && Math.abs(lp.x) < 1.05 && Math.abs(lp.y) < 1.05 && cam.r < l.maxR;
+        let vis = lp.z < 1 && Math.abs(lp.x) < 1.05 && Math.abs(lp.y) < 1.05 && cam.r < l.maxR;
+        const x = (lp.x + 1) / 2 * w, y = (1 - lp.y) / 2 * h;
+        if (vis) {
+          if (!l.w) { l.el.style.display = ''; l.w = l.el.offsetWidth; l.h = l.el.offsetHeight; }
+          const box = [x - l.w / 2 - 3, y - l.h - 2, x + l.w / 2 + 3, y];
+          vis = !placed.some(b => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1]);
+          if (vis) placed.push(box);
+        }
         l.el.style.display = vis ? '' : 'none';
-        if (vis) l.el.style.transform = 'translate(' + ((lp.x + 1) / 2 * w) + 'px,' + ((1 - lp.y) / 2 * h) + 'px) translate(-50%,-100%)';
+        if (vis) l.el.style.transform = 'translate(' + x + 'px,' + y + 'px) translate(-50%,-100%)';
       });
     }
 
     /* ---------- camera ---------- */
     const VIEWS = {
       overview: { t: V(42, 6, -6), r: 125, th: 0.6, ph: 1.08 },
-      core: { t: V(0, 6.2, 0), r: 14.5, th: 0, ph: 1.12 },
-      steam: { t: V(4, 11, 3), r: 38, th: 0.55, ph: 1.08 },
+      core: { t: V(0, 7, 0), r: 17, th: 0, ph: 1.15 },
+      steam: { t: V(2, 12, 0), r: 30, th: 0.55, ph: 1.0 },
       turbine: { t: V(53, 7, 0), r: 44, th: 0.42, ph: 1.18 }
     };
     const cam = { t: VIEWS.overview.t.clone(), r: VIEWS.overview.r, th: VIEWS.overview.th, ph: VIEWS.overview.ph };
