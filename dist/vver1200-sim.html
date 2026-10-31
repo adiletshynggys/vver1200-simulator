@@ -149,6 +149,32 @@ input[type=range]{width:100%;margin:4px 0 0;accent-color:var(--ink);height:28px}
 .rho dt{color:var(--ink-2)} .rho dd{margin:0;text-align:right;font-weight:600}
 .rho .sum{border-top:1px solid var(--rule);padding-top:3px}
 
+.small .v.warn{color:var(--hot)}
+.small abbr{text-decoration:none;display:inline-grid;place-items:center;width:14px;height:14px;border:1px solid var(--rule);border-radius:50%;font-size:10px;cursor:help}
+
+/* accident scenarios */
+.scen-list{display:grid;gap:12px;margin-top:10px}
+.scen-group h3{margin:0 0 5px;font:600 15px "Barlow Condensed",Barlow,sans-serif;color:var(--ink-2)}
+.scen-group div{display:grid;gap:6px}
+.scen-btn{display:block;width:100%;text-align:left;border:1px solid var(--rule);background:var(--well);border-radius:4px;padding:8px 10px;cursor:pointer}
+.scen-btn b{display:block;font:600 17px/1.2 "Barlow Condensed",Barlow,sans-serif}
+.scen-btn span{display:block;font-size:13px;color:var(--ink-2);margin-top:1px}
+.scen-btn:hover{border-color:var(--ink-2)}
+.scen-btn[aria-pressed="true"]{border-color:var(--hot)}
+.scen-btn[aria-pressed="true"] b{color:var(--hot)}
+.toggle{display:flex;gap:10px;align-items:flex-start;margin-top:12px;font-size:13px;color:var(--ink-2);cursor:pointer}
+.toggle input{width:18px;height:18px;margin:1px 0 0;flex:none;accent-color:var(--hot)}
+.toggle b{display:block;font-size:14px;color:var(--ink)}
+.scen-run{margin-top:14px}
+.scen-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px}
+.scen-head b{font:600 18px "Barlow Condensed",Barlow,sans-serif}
+.scen-head span{font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+canvas.plot.tplot{height:290px}
+.evlog{list-style:none;margin:10px 0 0;padding:0;font-size:13.5px;max-height:260px;overflow-y:auto;border-top:1px solid var(--rule)}
+.evlog li{display:grid;grid-template-columns:4.2em 1fr;gap:8px;padding:6px 0;border-bottom:1px solid var(--rule)}
+.evlog time{color:var(--ink-2);font-variant-numeric:tabular-nums;text-align:right}
+.evlog li.bad{color:var(--hot)}
+
 .xsopen{width:100%;margin-top:4px}
 canvas.plot{display:block;width:100%;height:150px;background:var(--well);border:1px solid var(--rule);border-radius:4px}
 .legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;color:var(--ink-2);margin-top:5px}
@@ -289,6 +315,9 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
       <div><span class="k">Turbine speed</span><span class="v" id="rpm">3000 rpm</span></div>
       <div><span class="k">Decay heat</span><span class="v" id="dh">6.5 %</span></div>
       <div><span class="k">Boric acid</span><span class="v" id="bor">600 ppm</span></div>
+      <div><span class="k">DNB ratio <abbr title="Departure from nucleate boiling: how far the hottest rod is from a boiling crisis. Limit 1.3.">?</abbr></span><span class="v" id="dnbr">1.90</span></div>
+      <div><span class="k">Hottest channel out</span><span class="v" id="thot">336 °C</span></div>
+      <div><span class="k">SG water level</span><span class="v" id="sgl">100 %</span></div>
     </div>
     <div class="logm">
       <div class="row"><span>Neutron power, log scale</span><b id="npow">100 %</b></div>
@@ -302,6 +331,27 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
       <div class="lamp" id="lGrid" style="--c:#ffc83a"><i></i>Generator on grid</div>
       <div class="lamp" id="lBlock" style="--c:#ff9d2e"><i></i>Rod withdrawal blocked</div>
     </div>
+
+    <section class="block" id="scen">
+      <h2>Accident scenarios</h2>
+      <p class="note">Each one restarts the plant at full power. The fault hits 5 s in. Watch the first minute at 1×, then speed up.</p>
+      <div class="scen-list" id="scenList"></div>
+      <label class="toggle">
+        <input type="checkbox" id="autoProt" checked>
+        <span><b>Automatic protection</b> Untick to see what happens if the scram fails. Manual scram still works.</span>
+      </label>
+      <div class="scen-run" id="scenRun" hidden>
+        <div class="scen-head"><b id="scenName"></b><span id="scenClock"></span></div>
+        <canvas class="plot tplot" id="tplot"></canvas>
+        <div class="legend">
+          <span><i style="background:var(--hot)"></i>Reactor power</span>
+          <span><i style="background:var(--cold)"></i>Core flow</span>
+          <span><i style="background:var(--steam)"></i>Heat to steam generators</span>
+          <span><i style="background:var(--ink)"></i>Hottest channel outlet, °C</span>
+        </div>
+        <ol class="evlog" id="evlog" aria-live="polite"></ol>
+      </div>
+    </section>
 
     <section class="block">
       <h2>Control rods</h2>
@@ -373,6 +423,7 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
       <p>Reactor power comes from point kinetics with six delayed-neutron groups for U-235 (β = 650 pcm, Λ = 20 µs) and a weak neutron source. Feedback is Doppler (−2.2 pcm/K on average fuel temperature) and moderator (−25 pcm/K on average coolant temperature), worth about 2000 pcm between hot zero power and full power.</p>
       <p>Heat flows through two lumps, fuel and coolant, to steam generators held at 7.0 MPa (285.8 °C). Decay heat is three exponential groups totalling 6.5 % of fission power. Electrical output is 37.5 % of the heat leaving the steam generators, so 3200 MWt gives 1200 MWe.</p>
       <p>Interlocks follow VVER practice in simplified form: rod withdrawal is blocked below a 20 s period, above 104 % power or above 330 °C core outlet, and the reactor scrams on 112 % power, 335 °C outlet, a 10 s period in the startup range, or loss of two coolant pumps.</p>
+      <p>Accident scenarios add a few more pieces. Pumps coast down on their flywheels (speed halves 15 s after losing power), and natural circulation carries about 10 % flow at full heat, falling with the cube root of the heat. The DNB ratio is a teaching estimate for the hottest rod: 1.9 at full power, scaled by the square root of flow and by subcooling, divided by the heat flux leaving the fuel; the design limit shown is 1.3. Steam generators hold about 5 minutes of full-power boil-off. Emergency feedwater starts 30 s after a low level and supplies 3 %. The passive heat removal system condenses up to 2 % of rated power and returns it. Pressure is held at 16.2 MPa throughout, so above 348 °C the page reports boiling instead of a temperature: the lumped model does not track steam in the core.</p>
       <p>The cross-sections use the TVS-2006 assembly geometry. Rod temperatures come from a steady conduction solution with temperature-dependent UO₂ conductivity (Fink 2000), a 6000 W/m²·K gap and Zr-1%Nb cladding, at the mid-plane with an axial factor of 1.3. The loading pattern and control cluster map are illustrative, not a real VVER-1200 core design.</p>
       <p>This is a teaching model, not plant-simulator practice. Real VVER analysis couples 3D nodal neutronics to system codes such as KORSAR or RELAP. The regulating group is worth 3000 pcm here so rods alone can cover the power defect; real plants share that job with boric acid. Rods move at 1 % of core height per second, about twice real speed. The turbine spin is slowed for viewing; on the grid it always turns at 3000 rpm.</p>
     </details>
@@ -450,11 +501,24 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
     BLOCK_PERIOD: 20, BLOCK_POWER: 1.04, BLOCK_TOUT: 330,
     N_FA: 163, PINS_PER_FA: 312, ACTIVE_H: 3.73, KZ_MID: 1.3,
     ETA: 1200 / 3200,
-    BETA_TOTAL: BT
+    BETA_TOTAL: BT,
+    // accident behaviour
+    PUMP_TAU: 15,           // flywheel coastdown: pump speed halves 15 s after losing power
+    PUMP_START: 4,          // pump run-up time constant, s
+    NC: 0.1,                // natural-circulation flow at full core heat, fraction of nominal (∝ heat^1/3)
+    TSAT_P: 348,            // saturation temperature at 16.2 MPa, °C
+    F_DH: 1.4,              // hot-channel enthalpy-rise factor
+    DNBR0: 1.9, DNBR_LIM: 1.3,
+    SG_INV: 300,            // steam generator water inventory, in seconds of full-power boil-off
+    SG_LOW: 0.4,            // scram on low steam generator level, fraction of normal inventory
+    EFW: 0.03, EFW_DELAY: 30,   // emergency feedwater capacity (fraction of full steam flow) and start-up delay, s
+    PHRS: 0.02,             // passive heat removal capacity, fraction of rated power
+    PRC_TARGET: 0.67        // automatic power reduction target after losing one pump
   };
   C.N_RODS = C.N_FA * C.PINS_PER_FA;
   C.DH_SUM = C.DH_A.reduce((a, b) => a + b, 0);
   const RF = C.TF0 - C.TM0, CF = 5 / RF, KSG = 1 / (C.TM0 - C.TS), CM = 0.3;
+  const THOT0 = C.TM0 - C.DT_CORE / 2 + C.F_DH * C.DT_CORE;
 
   /** integral rod worth, S-curve, x = fraction inserted */
   const worth = x => x - Math.sin(2 * Math.PI * x) / (2 * Math.PI);
@@ -463,16 +527,20 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
     const S = {};
 
     function reset() {
+      const autoProt = S.autoProt !== false;   // the protection switch survives a restart
       Object.assign(S, {
         n: 1, C: BETA.map((b, i) => b / (C.GEN * LAMB[i])), D: C.DH_A.slice(),
         Tf: C.TF0, Tm: C.TM0,
         rodX: C.X0, rodTarget: C.X0, sdX: 0, sdV: 0,
-        scram: false, trip: '', block: '',
+        scram: false, trip: '', block: '', tScram: null,
         boron: C.B0, boronTarget: C.B0,
-        pumps: [true, true, true, true], flow: 1,
+        pumps: [true, true, true, true], pw: [1, 1, 1, 1], seized: [false, false, false, false], flow: 1, natural: false,
         Ps: 1, online: true, rpm: 3000,
         inv: 0, period: Infinity, rho: 0, parts: { rods: 0, boron: 0, dop: 0, mod: 0 },
-        Pth: 1, qsg: 1, t: 0
+        Pth: 1, qsg: 1, qfc: 1, dnbr: C.DNBR0, t: 0,
+        sg: 1, feed: true, efwAvail: true, efw: false, efwT: 0, phrs: false,
+        autoProt, driveFault: false, prc: false,
+        scenario: null, plan: [], log: [], flags: {}
       });
     }
 
@@ -480,6 +548,9 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
     const coreDT = () => Math.min(C.DT_CORE * S.Pth / Math.max(S.flow, 0.04), 120);
     const coreOut = () => S.Tm + coreDT() / 2;
     const coreIn = () => S.Tm - coreDT() / 2;
+    const hotOut = () => coreIn() + C.F_DH * coreDT();
+    function log(text) { S.log.push({ t: S.t, text }); if (S.log.length > 80) S.log.shift(); }
+    function once(key, cond, text) { if (cond && !S.flags[key]) { S.flags[key] = true; log(text); } }
     const decayHeat = () => S.D[0] + S.D[1] + S.D[2];
     const pumpsOn = () => S.pumps.filter(Boolean).length;
     const onGrid = () => S.online && S.rpm >= 2999;
@@ -489,6 +560,8 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
     function scram(reason) {
       if (S.scram) return;
       S.scram = true; S.trip = reason || 'Scram'; S.online = false; S.sdV = 0; S.rodTarget = 1;
+      S.tScram = S.t; S.prc = false; S.driveFault = false;
+      log(S.trip + '. Shutdown banks drop; the turbine trips.');
     }
     function resetProtection() {
       if (!S.scram) return;
@@ -502,10 +575,18 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
     function tripTurbine() { S.online = false; }
 
     function step(dt) {
-      // regulating group drive with interlocks on withdrawal
+      while (S.plan.length && S.plan[0].t <= S.t) { const e = S.plan.shift(); log(e.text); e.fn(api); }
+
+      // automatic power reduction after losing one of four pumps: drive the group in until 67 %
+      if (S.prc) {
+        if (S.Pth > C.PRC_TARGET && !S.scram) S.rodTarget = 1;
+        else { S.prc = false; S.rodTarget = S.rodX; log('Power reduction complete at ' + Math.round(S.Pth * 100) + ' %. Three pumps carry the core.'); }
+      }
+
+      // regulating group drive with interlocks on withdrawal (a drive fault ignores them)
       const wantUp = S.rodTarget < S.rodX - 1e-9;
       let block = '';
-      if (wantUp) {
+      if (wantUp && !S.driveFault) {
         if (S.scram) block = 'Rods held in by emergency protection';
         else if (S.sdX > 0.001) block = 'Waiting for the shutdown banks to withdraw';
         else if (S.period > 0 && S.period < C.BLOCK_PERIOD) block = 'Withdrawal blocked: period below 20 s';
@@ -526,8 +607,23 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
 
       S.boron += clamp(S.boronTarget - S.boron, -C.BORON_RATE * dt, C.BORON_RATE * dt);
 
-      const on = pumpsOn(), fT = Math.max(on / 4, 0.04);
-      S.flow += (fT - S.flow) * dt / (fT < S.flow ? 8 : 4);
+      // pumps: run up when started, coast down on their flywheels when tripped, stop dead when seized
+      const on = pumpsOn();
+      for (let i = 0; i < 4; i++) {
+        if (S.seized[i]) S.pw[i] = 0;
+        else if (S.pumps[i]) S.pw[i] += (1 - S.pw[i]) * Math.min(1, dt / C.PUMP_START);
+        else S.pw[i] = S.pw[i] / (1 + S.pw[i] * dt / C.PUMP_TAU);
+      }
+      // a stopped loop also lets some water short-circuit backwards around the core
+      const forced = S.pw.reduce((a, b) => a + b, 0) / 4 * (S.seized.some(Boolean) ? 0.9 : 1);
+      const nat = C.NC * Math.cbrt(Math.max(S.qfc, 0));
+      S.flow = Math.max(forced, nat, 0.01);
+      S.natural = nat > forced;
+      if (on === 4) S.flags.prc = false;
+      if (S.autoProt && !S.scram && !S.flags.prc && on === 3 && S.Pth > C.PRC_TARGET + 0.05 && !S.seized.some(Boolean)) {
+        S.prc = S.flags.prc = true;
+        log('One pump lost: automatic power reduction drives the regulating group in toward 67 %.');
+      }
 
       // reactivity, pcm
       const pr = -C.W_REG * (worth(regX()) - worth(C.X0)) - C.W_SD * worth(S.sdX);
@@ -549,9 +645,33 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
       const qfc = (S.Tf - S.Tm) / RF;
       S.Tf += (Pth - qfc) * dt / CF;
       const hx = Math.pow(Math.max(S.flow, 0.04), 0.8);
-      const qsg = Math.max(0, KSG * hx * (S.Tm - C.TS));
+      // tubes uncovered as the steam generator water runs low: heat transfer falls away
+      const wet = clamp(S.sg / 0.3, 0.03, 1);
+      const qsg = Math.max(0, KSG * hx * wet * (S.Tm - C.TS));
       S.Tm += (qfc - qsg) * dt / CM;
-      S.Pth = Pth; S.qsg = qsg;
+      S.Pth = Pth; S.qsg = qsg; S.qfc = qfc;
+
+      // steam generator water: feedwater keeps it full; without it, boil-off drains it.
+      // The passive heat removal system condenses up to 2 % of rated power and returns it.
+      if (!S.feed && S.efwAvail && !S.efw && S.sg < C.SG_LOW + 0.05) {
+        S.efwT += dt;
+        if (S.efwT >= C.EFW_DELAY) { S.efw = true; log('Emergency feedwater pumps start and refill the steam generators.'); }
+      }
+      const feedIn = S.feed ? qsg + (1 - S.sg) * 0.05 : S.efw ? (S.sg < 1 ? C.EFW : Math.min(C.EFW, qsg)) : 0;
+      const steamLoss = S.phrs ? Math.max(0, qsg - C.PHRS) : qsg;
+      S.sg = clamp(S.sg + (feedIn - steamLoss) * dt / C.SG_INV, 0, 1);
+
+      // departure-from-nucleate-boiling ratio on the hottest rod (teaching correlation):
+      // margin grows with flow and subcooling, shrinks with the heat flux leaving the fuel
+      const th = hotOut();
+      let sub = 1 + 0.03 * (THOT0 - th);
+      if (th > C.TSAT_P) sub *= Math.max(0.3, 1 - (th - C.TSAT_P) / 30);
+      S.dnbr = qfc > 1e-3 ? C.DNBR0 * Math.sqrt(S.flow) * clamp(sub, 0.15, 2) / qfc : 99;
+
+      once('nat', S.natural && forced < 0.2, 'Pumps have run down. Natural circulation now carries the heat: hot water rises from the core to the steam generators and sinks back.');
+      once('boil', th > C.TSAT_P, 'Coolant reaches boiling point in the hottest channel.');
+      once('dnb', S.dnbr < C.DNBR_LIM, 'DNB ratio below the 1.3 limit: the hottest rods risk a boiling crisis and cladding overheating.');
+      once('dry', S.sg < 0.1, 'Steam generators almost dry: heat removal from the primary circuit is failing.');
 
       // turbine-generator
       if (S.online) {
@@ -563,13 +683,28 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
         S.rpm = Math.max(0, S.rpm - (S.rpm * 0.004 + 1.5) * dt);
       }
 
-      // emergency protection
-      if (!S.scram) {
+      // emergency protection (can be switched off to study a failure to scram)
+      if (!S.scram && S.autoProt) {
+        const dead = S.seized.indexOf(true);
         if (Pth > C.TRIP_POWER) scram('Scram: power above 112 %');
         else if (coreOut() > C.TRIP_TOUT) scram('Scram: core outlet above 335 °C');
-        else if (on <= 2 && S.n > 0.3) scram('Scram: two or more coolant pumps lost');
+        else if (on <= 2 && S.n > 0.3 && S.flow < 0.93) scram('Scram: two or more coolant pumps lost');
+        else if (dead >= 0 && S.n > 0.3) scram('Scram: no pressure difference across pump ' + (dead + 1));
+        else if (S.sg < C.SG_LOW && S.n > 0.05) scram('Scram: steam generator water level low');
       }
       S.t += dt;
+    }
+
+    /** restart at full power and schedule a scenario's events; returns false for an unknown id */
+    function runScenario(id) {
+      const sc = SCENARIOS.find(s => s.id === id);
+      if (!sc) return false;
+      reset();
+      S.scenario = id;
+      log('Plant at full power. ' + sc.name + ' in 5 s' + (S.autoProt ? '.' : ', with automatic protection switched off.'));
+      sc.events.forEach(e => S.plan.push({ t: e[0], text: e[1], fn: e[2] }));
+      S.plan.sort((a, b) => a.t - b.t);
+      return true;
     }
 
     /** advance the model by simDt seconds of plant time */
@@ -581,18 +716,44 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
       S.inv += (dl - S.inv) * Math.min(1, simDt / 0.8);
       S.period = Math.abs(S.inv) < 1e-3 ? Infinity : 1 / S.inv;
       // period protection works in the source and intermediate ranges
-      if (!S.scram && S.period > 0 && S.period < C.TRIP_PERIOD && S.n > 1e-4 && S.n < 0.1) {
+      if (!S.scram && S.autoProt && S.period > 0 && S.period < C.TRIP_PERIOD && S.n > 1e-4 && S.n < 0.1) {
         scram('Scram: reactor period below 10 s');
       }
     }
 
-    reset();
-    return {
+    const api = {
       S, reset, step, advance, scram, resetProtection, setRodHeight, holdRods,
-      startTurbine, tripTurbine, regX, coreDT, coreIn, coreOut, decayHeat, pumpsOn, onGrid,
-      rodHeight, targetHeight
+      startTurbine, tripTurbine, regX, coreDT, coreIn, coreOut, hotOut, decayHeat, pumpsOn, onGrid,
+      rodHeight, targetHeight, runScenario, log
     };
+    reset();
+    return api;
   }
+
+  /* ---------- accident scenarios: each event is [time s, what happens, action] ---------- */
+  const SCENARIOS = [
+    { id: 'lofa', group: 'Loss of flow', name: 'All four pumps lose power',
+      what: 'Loss of forced circulation. Flow coasts down on the pump flywheels while the core still makes heat.',
+      events: [[5, 'Power to all four main coolant pumps is lost. Their flywheels keep them turning as they slow down.', R => { R.S.pumps.fill(false); }]] },
+    { id: 'pump1', group: 'Loss of flow', name: 'One pump trips',
+      what: 'Partial loss of flow. Three pumps keep running and the reactor is run back instead of scrammed.',
+      events: [[5, 'Main coolant pump 1 trips and coasts down.', R => { R.S.pumps[0] = false; }]] },
+    { id: 'seize', group: 'Loss of flow', name: 'Pump shaft seizes',
+      what: 'Locked rotor. Flow in one loop stops at once, the fastest flow drop a PWR is designed for.',
+      events: [[5, 'Pump 1 shaft seizes. Flow through loop 1 stops at once.', R => { R.S.pumps[0] = false; R.S.seized[0] = true; }]] },
+    { id: 'lofw', group: 'Loss of heat sink', name: 'Loss of feedwater',
+      what: 'The steam generators keep boiling but nothing refills them, so the plant slowly loses its heat sink.',
+      events: [[5, 'Main feedwater pumps stop. The steam generators boil off their water with nothing coming in.', R => { R.S.feed = false; }]] },
+    { id: 'sbo', group: 'Loss of heat sink', name: 'Station blackout',
+      what: 'No AC power on site: pumps, turbine and feedwater all stop. Only passive systems are left.',
+      events: [
+        [5, 'Grid and diesel generators lost: no AC power on site. Pumps, turbine and feedwater all stop.', R => { R.S.pumps.fill(false); R.tripTurbine(); R.S.feed = false; R.S.efwAvail = false; }],
+        [8, 'Passive heat removal system: air dampers open on their own. Steam condenses in air-cooled heat exchangers above containment and drains back to the steam generators.', R => { R.S.phrs = true; }]
+      ] },
+    { id: 'rodw', group: 'Reactivity', name: 'Uncontrolled rod withdrawal',
+      what: 'A drive-control fault pulls the regulating group out and ignores the interlocks that would stop it.',
+      events: [[5, 'Rod drive control fails: the regulating group starts withdrawing and ignores the interlocks.', R => { R.S.driveFault = true; R.S.rodTarget = 0; }]] }
+  ];
 
   /* ---------- core layout: 163 hexagonal assemblies ---------- */
   function buildCore() {
@@ -731,7 +892,7 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
   const qAvg = p => p * C.P_NOM * 1e6 / (C.N_RODS * C.ACTIVE_H);
 
   return {
-    C, BETA, LAMB, worth, createReactor, buildCore, assemblyPowers, BATCH,
+    C, BETA, LAMB, worth, createReactor, SCENARIOS, buildCore, assemblyPowers, BATCH,
     buildAssembly, pinFactor, ROD, kUO2, rodProfile, qAvg, clamp
   };
 });
@@ -1813,11 +1974,106 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
   $('#scram').addEventListener('click', () => R.scram('Scram: manual emergency protection'));
   $('#turb').addEventListener('click', () => { if (S.online) R.tripTurbine(); else R.startTurbine(); });
   $('#resetTrip').addEventListener('click', () => R.resetProtection());
-  $('#resetAll').addEventListener('click', () => { R.reset(); $('#boron').value = C.B0; hist.length = 0; renderPumps(); });
-  document.querySelectorAll('.speed button').forEach(b => b.addEventListener('click', () => {
-    speed = +b.dataset.speed;
-    document.querySelectorAll('.speed button').forEach(x => x.setAttribute('aria-pressed', x === b));
-  }));
+  $('#resetAll').addEventListener('click', () => { R.reset(); $('#boron').value = C.B0; hist.length = 0; renderPumps(); endScenario(); });
+  function setSpeed(v) {
+    speed = v;
+    document.querySelectorAll('.speed button').forEach(x => x.setAttribute('aria-pressed', +x.dataset.speed === v));
+  }
+  document.querySelectorAll('.speed button').forEach(b => b.addEventListener('click', () => setSpeed(+b.dataset.speed)));
+
+  /* ---------- accident scenarios ---------- */
+  const scenList = $('#scenList'), autoProt = $('#autoProt'), evlog = $('#evlog');
+  const trace = []; let traceAcc = 0, logShown = 0;
+  [...new Set(P.SCENARIOS.map(s => s.group))].forEach(g => {
+    const box = document.createElement('div'); box.className = 'scen-group';
+    box.innerHTML = '<h3>' + g + '</h3><div></div>';
+    P.SCENARIOS.filter(s => s.group === g).forEach(s => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'scen-btn'; b.dataset.id = s.id; b.setAttribute('aria-pressed', 'false');
+      b.innerHTML = '<b></b><span></span>';
+      b.firstChild.textContent = s.name; b.lastChild.textContent = s.what;
+      b.addEventListener('click', () => startScenario(s.id));
+      box.lastChild.appendChild(b);
+    });
+    scenList.appendChild(box);
+  });
+  autoProt.addEventListener('change', () => { S.autoProt = autoProt.checked; });
+  function startScenario(id) {
+    S.autoProt = autoProt.checked;
+    R.runScenario(id);
+    $('#boron').value = C.B0; hist.length = 0; renderPumps();
+    trace.length = 0; traceAcc = 0; logShown = 0; evlog.innerHTML = '';
+    const sc = P.SCENARIOS.find(s => s.id === id);
+    $('#scenName').textContent = sc.name + (S.autoProt ? '' : ', no automatic protection');
+    $('#scenRun').hidden = false;
+    document.querySelectorAll('.scen-btn').forEach(b => b.setAttribute('aria-pressed', b.dataset.id === id));
+    setSpeed(1);
+    if (plant) plant.setView(id === 'lofw' || id === 'sbo' ? 'steam' : 'core');
+    sizeCanvases();
+  }
+  function endScenario() {
+    $('#scenRun').hidden = true; trace.length = 0;
+    document.querySelectorAll('.scen-btn').forEach(b => b.setAttribute('aria-pressed', 'false'));
+  }
+  function sampleTrace(simDt) {
+    if (!S.scenario) return;
+    traceAcc += simDt;
+    if (traceAcc < 0.1) return;
+    traceAcc = 0;
+    trace.push({ t: S.t, p: S.Pth, f: S.flow, q: S.qsg, th: R.hotOut() });
+    if (trace.length > 3000) for (let i = trace.length - 1; i > 0; i -= 2) trace.splice(i, 1);  // keep every other point
+  }
+  const BAD = /Scram|DNB|boiling|dry|fails|lost|seizes|stop/;
+  function renderLog() {
+    if (!S.scenario) return;
+    $('#scenClock').textContent = 't = ' + fmt(S.t, S.t < 100 ? 1 : 0) + ' s';
+    while (logShown < S.log.length) {
+      const e = S.log[logShown++], li = document.createElement('li');
+      li.innerHTML = '<time></time><span></span>';
+      li.firstChild.textContent = fmt(e.t, e.t < 100 ? 1 : 0) + ' s';
+      li.lastChild.textContent = e.text;
+      if (BAD.test(e.text) && e.t > 0) li.className = 'bad';
+      evlog.appendChild(li);
+      evlog.scrollTop = evlog.scrollHeight;
+    }
+  }
+  function drawTrace() {
+    if (!S.scenario || $('#scenRun').hidden) return;
+    const cs = getComputedStyle(document.documentElement), W = tplot.width, Hh = tplot.height;
+    if (!W) return;
+    const d = W / tplot.clientWidth, L = 38 * d, Rr = W - 6 * d;
+    const tMax = Math.max(60, Math.ceil((trace.length ? trace[trace.length - 1].t : 0) / 30) * 30);
+    const X = t => L + (Rr - L) * t / tMax;
+    // upper panel: percent of rated; lower panel: hottest channel outlet temperature
+    const a0 = 8 * d, a1 = Hh * 0.55, b0 = Hh * 0.55 + 16 * d, b1 = Hh - 20 * d;
+    const Yp = v => a1 - (a1 - a0) * Math.min(v, 1.3) / 1.3;
+    const T0 = 280, T1 = 370, Yt = T => b1 - (b1 - b0) * (Math.min(Math.max(T, T0), T1) - T0) / (T1 - T0);
+    tg.clearRect(0, 0, W, Hh);
+    tg.font = (11 * d) + 'px Barlow, sans-serif'; tg.lineWidth = 1;
+    const ink2 = cs.getPropertyValue('--ink-2'), rule = cs.getPropertyValue('--rule');
+    const hline = (y, label, dash) => {
+      tg.strokeStyle = rule; tg.setLineDash(dash ? [4 * d, 3 * d] : []);
+      tg.beginPath(); tg.moveTo(L, y); tg.lineTo(Rr, y); tg.stroke(); tg.setLineDash([]);
+      tg.fillStyle = ink2; tg.textAlign = 'right'; tg.fillText(label, L - 4 * d, y + 4 * d);
+    };
+    [0, 0.5, 1].forEach(v => hline(Yp(v), (v * 100) + ' %'));
+    [290, 320].forEach(T => hline(Yt(T), T + ' °C'));
+    tg.strokeStyle = cs.getPropertyValue('--hot'); tg.setLineDash([4 * d, 3 * d]);
+    tg.beginPath(); tg.moveTo(L, Yt(C.TSAT_P)); tg.lineTo(Rr, Yt(C.TSAT_P)); tg.stroke(); tg.setLineDash([]);
+    tg.fillStyle = cs.getPropertyValue('--hot'); tg.textAlign = 'left';
+    tg.fillText('boiling at 16.2 MPa', L + 4 * d, Yt(C.TSAT_P) - 4 * d);
+    tg.fillStyle = ink2; tg.textAlign = 'center';
+    for (let t = 0; t <= tMax; t += tMax / 4) tg.fillText(fmt(t) + ' s', X(t), Hh - 4 * d);
+    const line = (key, Y, col) => {
+      tg.strokeStyle = col; tg.lineWidth = 2 * d; tg.beginPath();
+      trace.forEach((p, i) => { const x = X(p.t), y = Y(p[key]); if (i) tg.lineTo(x, y); else tg.moveTo(x, y); });
+      tg.stroke();
+    };
+    line('f', Yp, cs.getPropertyValue('--cold'));
+    line('q', Yp, cs.getPropertyValue('--steam'));
+    line('p', Yp, cs.getPropertyValue('--hot'));
+    line('th', Yt, cs.getPropertyValue('--ink'));
+  }
   $('#xsOpen').addEventListener('click', () => XS.open('core'));
 
   /* ---------- readouts ---------- */
@@ -1842,11 +2098,22 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
     $('#per').textContent = !isFinite(S.period) || Math.abs(S.period) > 999 ? '∞' : fmt(S.period, 1) + ' s';
     $('#flow').textContent = fmt(S.flow * 100) + ' %';
     $('#tin').textContent = fmt(R.coreIn(), 1) + ' °C';
-    $('#tout').textContent = fmt(R.coreOut(), 1) + ' °C';
+    const to = R.coreOut();
+    $('#tout').textContent = to >= C.TSAT_P ? 'Boiling' : fmt(to, 1) + ' °C';
+    $('#tout').classList.toggle('warn', to >= C.TSAT_P);
     $('#tf').textContent = fmt(S.Tf) + ' °C';
     $('#rpm').textContent = fmt(S.rpm) + ' rpm';
     $('#dh').textContent = fmt(R.decayHeat() * 100, 2) + ' %';
     $('#bor').textContent = fmt(S.boron) + ' ppm';
+    const dn = $('#dnbr');
+    dn.textContent = S.dnbr > 9.9 ? '> 10' : fmt(S.dnbr, 2);
+    dn.classList.toggle('warn', S.dnbr < C.DNBR_LIM);
+    const th = R.hotOut(), tv = $('#thot');
+    tv.textContent = th >= C.TSAT_P ? 'Boiling' : fmt(th, 1) + ' °C';
+    tv.classList.toggle('warn', th >= C.TSAT_P);
+    $('#sgl').textContent = fmt(S.sg * 100) + ' %';
+    $('#sgl').classList.toggle('warn', S.sg < C.SG_LOW);
+    if (autoProt.checked !== S.autoProt) autoProt.checked = S.autoProt;
     const np = S.n * 100;
     $('#npow').textContent = np >= 0.1 ? fmt(np, np >= 10 ? 0 : 1) + ' %' : np.toExponential(1) + ' %';
     $('#nbar').style.width = clamp((Math.log10(S.n) + 8) / 8, 0, 1) * 100 + '%';
@@ -1883,9 +2150,10 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
   /* ---------- power history ---------- */
   const hist = []; let histAcc = 0;
   const plot = $('#plot'), pg = plot.getContext('2d'), fis = $('#fis'), fg = fis.getContext('2d');
+  const tplot = $('#tplot'), tg = tplot.getContext('2d');
   function sizeCanvases() {
     const d = Math.min(window.devicePixelRatio || 1, 2);
-    [plot, fis].forEach(c => { c.width = Math.round(c.clientWidth * d); c.height = Math.round(c.clientHeight * d); });
+    [plot, fis, tplot].forEach(c => { c.width = Math.round(c.clientWidth * d); c.height = Math.round(c.clientHeight * d); });
   }
   function sample(simDt) {
     histAcc += simDt;
@@ -1981,11 +2249,11 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
   function frame(now) {
     const rdt = Math.min(0.05, Math.max(0, (now - last) / 1000)); last = now;
     const simDt = rdt * speed;
-    R.advance(simDt); sample(simDt);
+    R.advance(simDt); sample(simDt); sampleTrace(simDt);
     if (plant) plant.update(rdt);
     updateFis(rdt);
-    uiT += rdt; if (uiT > 0.1) { uiT = 0; updateUI(); }
-    plotT += rdt; if (plotT > 0.25) { plotT = 0; drawPlot(); }
+    uiT += rdt; if (uiT > 0.1) { uiT = 0; updateUI(); renderLog(); }
+    plotT += rdt; if (plotT > 0.25) { plotT = 0; drawPlot(); drawTrace(); }
     xsT += rdt; if (xsT > 0.5) { xsT = 0; XS.tick(); }
     infoT += rdt; if (infoT > 0.3) { infoT = 0; refreshInfo(); }
     requestAnimationFrame(frame);

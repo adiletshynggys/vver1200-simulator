@@ -59,6 +59,9 @@
       <div><span class="k">Turbine speed</span><span class="v" id="rpm">3000 rpm</span></div>
       <div><span class="k">Decay heat</span><span class="v" id="dh">6.5 %</span></div>
       <div><span class="k">Boric acid</span><span class="v" id="bor">600 ppm</span></div>
+      <div><span class="k">DNB ratio <abbr title="Departure from nucleate boiling: how far the hottest rod is from a boiling crisis. Limit 1.3.">?</abbr></span><span class="v" id="dnbr">1.90</span></div>
+      <div><span class="k">Hottest channel out</span><span class="v" id="thot">336 °C</span></div>
+      <div><span class="k">SG water level</span><span class="v" id="sgl">100 %</span></div>
     </div>
     <div class="logm">
       <div class="row"><span>Neutron power, log scale</span><b id="npow">100 %</b></div>
@@ -72,6 +75,27 @@
       <div class="lamp" id="lGrid" style="--c:#ffc83a"><i></i>Generator on grid</div>
       <div class="lamp" id="lBlock" style="--c:#ff9d2e"><i></i>Rod withdrawal blocked</div>
     </div>
+
+    <section class="block" id="scen">
+      <h2>Accident scenarios</h2>
+      <p class="note">Each one restarts the plant at full power. The fault hits 5 s in. Watch the first minute at 1×, then speed up.</p>
+      <div class="scen-list" id="scenList"></div>
+      <label class="toggle">
+        <input type="checkbox" id="autoProt" checked>
+        <span><b>Automatic protection</b> Untick to see what happens if the scram fails. Manual scram still works.</span>
+      </label>
+      <div class="scen-run" id="scenRun" hidden>
+        <div class="scen-head"><b id="scenName"></b><span id="scenClock"></span></div>
+        <canvas class="plot tplot" id="tplot"></canvas>
+        <div class="legend">
+          <span><i style="background:var(--hot)"></i>Reactor power</span>
+          <span><i style="background:var(--cold)"></i>Core flow</span>
+          <span><i style="background:var(--steam)"></i>Heat to steam generators</span>
+          <span><i style="background:var(--ink)"></i>Hottest channel outlet, °C</span>
+        </div>
+        <ol class="evlog" id="evlog" aria-live="polite"></ol>
+      </div>
+    </section>
 
     <section class="block">
       <h2>Control rods</h2>
@@ -143,6 +167,7 @@
       <p>Reactor power comes from point kinetics with six delayed-neutron groups for U-235 (β = 650 pcm, Λ = 20 µs) and a weak neutron source. Feedback is Doppler (−2.2 pcm/K on average fuel temperature) and moderator (−25 pcm/K on average coolant temperature), worth about 2000 pcm between hot zero power and full power.</p>
       <p>Heat flows through two lumps, fuel and coolant, to steam generators held at 7.0 MPa (285.8 °C). Decay heat is three exponential groups totalling 6.5 % of fission power. Electrical output is 37.5 % of the heat leaving the steam generators, so 3200 MWt gives 1200 MWe.</p>
       <p>Interlocks follow VVER practice in simplified form: rod withdrawal is blocked below a 20 s period, above 104 % power or above 330 °C core outlet, and the reactor scrams on 112 % power, 335 °C outlet, a 10 s period in the startup range, or loss of two coolant pumps.</p>
+      <p>Accident scenarios add a few more pieces. Pumps coast down on their flywheels (speed halves 15 s after losing power), and natural circulation carries about 10 % flow at full heat, falling with the cube root of the heat. The DNB ratio is a teaching estimate for the hottest rod: 1.9 at full power, scaled by the square root of flow and by subcooling, divided by the heat flux leaving the fuel; the design limit shown is 1.3. Steam generators hold about 5 minutes of full-power boil-off. Emergency feedwater starts 30 s after a low level and supplies 3 %. The passive heat removal system condenses up to 2 % of rated power and returns it. Pressure is held at 16.2 MPa throughout, so above 348 °C the page reports boiling instead of a temperature: the lumped model does not track steam in the core.</p>
       <p>The cross-sections use the TVS-2006 assembly geometry. Rod temperatures come from a steady conduction solution with temperature-dependent UO₂ conductivity (Fink 2000), a 6000 W/m²·K gap and Zr-1%Nb cladding, at the mid-plane with an axial factor of 1.3. The loading pattern and control cluster map are illustrative, not a real VVER-1200 core design.</p>
       <p>This is a teaching model, not plant-simulator practice. Real VVER analysis couples 3D nodal neutronics to system codes such as KORSAR or RELAP. The regulating group is worth 3000 pcm here so rods alone can cover the power defect; real plants share that job with boric acid. Rods move at 1 % of core height per second, about twice real speed. The turbine spin is slowed for viewing; on the grid it always turns at 3000 rpm.</p>
     </details>

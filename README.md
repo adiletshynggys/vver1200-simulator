@@ -16,6 +16,7 @@ Built as a teaching aid for a nuclear engineering capstone at Nazarbayev Univers
 - Raise and lower the regulating group (position in % of core height, 100 % = fully withdrawn), change boric acid, trip and restart the four main coolant pumps, scram, reset protection and restart from hot zero power.
 - Watch thermal and electrical power, reactivity and its parts, reactor period, neutron power on a log scale, coolant and fuel temperatures, decay heat and turbine speed.
 - See flow on every pipe: arrows move with the flow and fade when it stops.
+- Run accident scenarios: loss of all pumps, one pump trip, a seized pump, loss of feedwater, station blackout with passive heat removal, and uncontrolled rod withdrawal. Untick automatic protection to see each one without a scram. A live chart tracks power, core flow, heat to the steam generators and the hottest channel outlet, with a timeline of what the plant does.
 - Open cross-sections: the 163-assembly core (power or fuel loading), a TVS-2006 assembly (312 fuel rods, 18 guide channels, central tube, gadolinia rods), a fuel rod with its live radial temperature profile, and a guide channel with the absorber in or out.
 
 ## Model
@@ -27,7 +28,8 @@ Built as a teaching aid for a nuclear engineering capstone at Nazarbayev Univers
 | Control | Regulating group 3000 pcm (S-curve), shutdown banks 9000 pcm, boric acid −12 pcm/ppm |
 | Heat | Fuel and coolant lumps; steam generators at 7.0 MPa (285.8 °C); decay heat in three groups totalling 6.5 % |
 | Secondary | Electrical output 37.5 % of steam generator heat; turbine at 3000 rpm on the grid, coasting down when tripped |
-| Protection | Withdrawal blocked below 20 s period, above 104 % power or 330 °C outlet; scram on 112 % power, 335 °C outlet, 10 s period (startup range) or two pumps lost |
+| Protection | Withdrawal blocked below 20 s period, above 104 % power or 330 °C outlet; scram on 112 % power, 335 °C outlet, 10 s period (startup range), two pumps lost, a seized pump or low steam generator level; all automatic actions can be switched off |
+| Accidents | Pump flywheel coastdown (speed halves in 15 s), natural circulation ∝ heat^1/3 (10 % at full heat), DNB ratio estimate on the hottest rod (1.9 nominal, limit 1.3), steam generator inventory of 5 min at full power, emergency feedwater 3 % after 30 s, passive heat removal 2 %, automatic power reduction to 67 % on losing one pump |
 | Fuel rod | Steady conduction: UO₂ conductivity from Fink (2000), 6000 W/m²·K gap, Zr-1%Nb cladding at 17 W/m·K, mid-plane with axial factor 1.3 |
 
 Rated conditions: 3200 MWt, 1200 MWe gross, 16.2 MPa, core inlet 298.2 °C and outlet 325 °C.
@@ -38,6 +40,7 @@ Rated conditions: 3200 MWt, 1200 MWe gross, 16.2 MPa, core inlet 298.2 °C and o
 - The regulating group is worth 3000 pcm so rods alone can cover the roughly 2000 pcm power defect. Real plants share that job with boric acid.
 - Rods move at 1 % of core height per second, about twice real speed.
 - The fuel loading pattern, control cluster map and guide channel positions are illustrative, not a real VVER-1200 core design.
+- Primary pressure is held at 16.2 MPa in every scenario and the coolant is a single lump, so the model flags boiling but does not follow steam in the core. The DNB ratio is an illustrative correlation, not a qualified CHF method.
 - The turbine spin is slowed for viewing. The Cherenkov glow is shown through a cutaway; a real steel vessel hides it.
 
 ## Layout

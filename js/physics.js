@@ -42,11 +42,24 @@
     BLOCK_PERIOD: 20, BLOCK_POWER: 1.04, BLOCK_TOUT: 330,
     N_FA: 163, PINS_PER_FA: 312, ACTIVE_H: 3.73, KZ_MID: 1.3,
     ETA: 1200 / 3200,
-    BETA_TOTAL: BT
+    BETA_TOTAL: BT,
+    // accident behaviour
+    PUMP_TAU: 15,           // flywheel coastdown: pump speed halves 15 s after losing power
+    PUMP_START: 4,          // pump run-up time constant, s
+    NC: 0.1,                // natural-circulation flow at full core heat, fraction of nominal (∝ heat^1/3)
+    TSAT_P: 348,            // saturation temperature at 16.2 MPa, °C
+    F_DH: 1.4,              // hot-channel enthalpy-rise factor
+    DNBR0: 1.9, DNBR_LIM: 1.3,
+    SG_INV: 300,            // steam generator water inventory, in seconds of full-power boil-off
+    SG_LOW: 0.4,            // scram on low steam generator level, fraction of normal inventory
+    EFW: 0.03, EFW_DELAY: 30,   // emergency feedwater capacity (fraction of full steam flow) and start-up delay, s
+    PHRS: 0.02,             // passive heat removal capacity, fraction of rated power
+    PRC_TARGET: 0.67        // automatic power reduction target after losing one pump
   };
   C.N_RODS = C.N_FA * C.PINS_PER_FA;
   C.DH_SUM = C.DH_A.reduce((a, b) => a + b, 0);
   const RF = C.TF0 - C.TM0, CF = 5 / RF, KSG = 1 / (C.TM0 - C.TS), CM = 0.3;
+  const THOT0 = C.TM0 - C.DT_CORE / 2 + C.F_DH * C.DT_CORE;
 
   /** integral rod worth, S-curve, x = fraction inserted */
   const worth = x => x - Math.sin(2 * Math.PI * x) / (2 * Math.PI);
@@ -55,16 +68,20 @@
     const S = {};
 
     function reset() {
+      const autoProt = S.autoProt !== false;   // the protection switch survives a restart
       Object.assign(S, {
         n: 1, C: BETA.map((b, i) => b / (C.GEN * LAMB[i])), D: C.DH_A.slice(),
         Tf: C.TF0, Tm: C.TM0,
         rodX: C.X0, rodTarget: C.X0, sdX: 0, sdV: 0,
-        scram: false, trip: '', block: '',
+        scram: false, trip: '', block: '', tScram: null,
         boron: C.B0, boronTarget: C.B0,
-        pumps: [true, true, true, true], flow: 1,
+        pumps: [true, true, true, true], pw: [1, 1, 1, 1], seized: [false, false, false, false], flow: 1, natural: false,
         Ps: 1, online: true, rpm: 3000,
         inv: 0, period: Infinity, rho: 0, parts: { rods: 0, boron: 0, dop: 0, mod: 0 },
-        Pth: 1, qsg: 1, t: 0
+        Pth: 1, qsg: 1, qfc: 1, dnbr: C.DNBR0, t: 0,
+        sg: 1, feed: true, efwAvail: true, efw: false, efwT: 0, phrs: false,
+        autoProt, driveFault: false, prc: false,
+        scenario: null, plan: [], log: [], flags: {}
       });
     }
 
@@ -72,6 +89,9 @@
     const coreDT = () => Math.min(C.DT_CORE * S.Pth / Math.max(S.flow, 0.04), 120);
     const coreOut = () => S.Tm + coreDT() / 2;
     const coreIn = () => S.Tm - coreDT() / 2;
+    const hotOut = () => coreIn() + C.F_DH * coreDT();
+    function log(text) { S.log.push({ t: S.t, text }); if (S.log.length > 80) S.log.shift(); }
+    function once(key, cond, text) { if (cond && !S.flags[key]) { S.flags[key] = true; log(text); } }
     const decayHeat = () => S.D[0] + S.D[1] + S.D[2];
     const pumpsOn = () => S.pumps.filter(Boolean).length;
     const onGrid = () => S.online && S.rpm >= 2999;
@@ -81,6 +101,8 @@
     function scram(reason) {
       if (S.scram) return;
       S.scram = true; S.trip = reason || 'Scram'; S.online = false; S.sdV = 0; S.rodTarget = 1;
+      S.tScram = S.t; S.prc = false; S.driveFault = false;
+      log(S.trip + '. Shutdown banks drop; the turbine trips.');
     }
     function resetProtection() {
       if (!S.scram) return;
@@ -94,10 +116,18 @@
     function tripTurbine() { S.online = false; }
 
     function step(dt) {
-      // regulating group drive with interlocks on withdrawal
+      while (S.plan.length && S.plan[0].t <= S.t) { const e = S.plan.shift(); log(e.text); e.fn(api); }
+
+      // automatic power reduction after losing one of four pumps: drive the group in until 67 %
+      if (S.prc) {
+        if (S.Pth > C.PRC_TARGET && !S.scram) S.rodTarget = 1;
+        else { S.prc = false; S.rodTarget = S.rodX; log('Power reduction complete at ' + Math.round(S.Pth * 100) + ' %. Three pumps carry the core.'); }
+      }
+
+      // regulating group drive with interlocks on withdrawal (a drive fault ignores them)
       const wantUp = S.rodTarget < S.rodX - 1e-9;
       let block = '';
-      if (wantUp) {
+      if (wantUp && !S.driveFault) {
         if (S.scram) block = 'Rods held in by emergency protection';
         else if (S.sdX > 0.001) block = 'Waiting for the shutdown banks to withdraw';
         else if (S.period > 0 && S.period < C.BLOCK_PERIOD) block = 'Withdrawal blocked: period below 20 s';
@@ -118,8 +148,23 @@
 
       S.boron += clamp(S.boronTarget - S.boron, -C.BORON_RATE * dt, C.BORON_RATE * dt);
 
-      const on = pumpsOn(), fT = Math.max(on / 4, 0.04);
-      S.flow += (fT - S.flow) * dt / (fT < S.flow ? 8 : 4);
+      // pumps: run up when started, coast down on their flywheels when tripped, stop dead when seized
+      const on = pumpsOn();
+      for (let i = 0; i < 4; i++) {
+        if (S.seized[i]) S.pw[i] = 0;
+        else if (S.pumps[i]) S.pw[i] += (1 - S.pw[i]) * Math.min(1, dt / C.PUMP_START);
+        else S.pw[i] = S.pw[i] / (1 + S.pw[i] * dt / C.PUMP_TAU);
+      }
+      // a stopped loop also lets some water short-circuit backwards around the core
+      const forced = S.pw.reduce((a, b) => a + b, 0) / 4 * (S.seized.some(Boolean) ? 0.9 : 1);
+      const nat = C.NC * Math.cbrt(Math.max(S.qfc, 0));
+      S.flow = Math.max(forced, nat, 0.01);
+      S.natural = nat > forced;
+      if (on === 4) S.flags.prc = false;
+      if (S.autoProt && !S.scram && !S.flags.prc && on === 3 && S.Pth > C.PRC_TARGET + 0.05 && !S.seized.some(Boolean)) {
+        S.prc = S.flags.prc = true;
+        log('One pump lost: automatic power reduction drives the regulating group in toward 67 %.');
+      }
 
       // reactivity, pcm
       const pr = -C.W_REG * (worth(regX()) - worth(C.X0)) - C.W_SD * worth(S.sdX);
@@ -141,9 +186,33 @@
       const qfc = (S.Tf - S.Tm) / RF;
       S.Tf += (Pth - qfc) * dt / CF;
       const hx = Math.pow(Math.max(S.flow, 0.04), 0.8);
-      const qsg = Math.max(0, KSG * hx * (S.Tm - C.TS));
+      // tubes uncovered as the steam generator water runs low: heat transfer falls away
+      const wet = clamp(S.sg / 0.3, 0.03, 1);
+      const qsg = Math.max(0, KSG * hx * wet * (S.Tm - C.TS));
       S.Tm += (qfc - qsg) * dt / CM;
-      S.Pth = Pth; S.qsg = qsg;
+      S.Pth = Pth; S.qsg = qsg; S.qfc = qfc;
+
+      // steam generator water: feedwater keeps it full; without it, boil-off drains it.
+      // The passive heat removal system condenses up to 2 % of rated power and returns it.
+      if (!S.feed && S.efwAvail && !S.efw && S.sg < C.SG_LOW + 0.05) {
+        S.efwT += dt;
+        if (S.efwT >= C.EFW_DELAY) { S.efw = true; log('Emergency feedwater pumps start and refill the steam generators.'); }
+      }
+      const feedIn = S.feed ? qsg + (1 - S.sg) * 0.05 : S.efw ? (S.sg < 1 ? C.EFW : Math.min(C.EFW, qsg)) : 0;
+      const steamLoss = S.phrs ? Math.max(0, qsg - C.PHRS) : qsg;
+      S.sg = clamp(S.sg + (feedIn - steamLoss) * dt / C.SG_INV, 0, 1);
+
+      // departure-from-nucleate-boiling ratio on the hottest rod (teaching correlation):
+      // margin grows with flow and subcooling, shrinks with the heat flux leaving the fuel
+      const th = hotOut();
+      let sub = 1 + 0.03 * (THOT0 - th);
+      if (th > C.TSAT_P) sub *= Math.max(0.3, 1 - (th - C.TSAT_P) / 30);
+      S.dnbr = qfc > 1e-3 ? C.DNBR0 * Math.sqrt(S.flow) * clamp(sub, 0.15, 2) / qfc : 99;
+
+      once('nat', S.natural && forced < 0.2, 'Pumps have run down. Natural circulation now carries the heat: hot water rises from the core to the steam generators and sinks back.');
+      once('boil', th > C.TSAT_P, 'Coolant reaches boiling point in the hottest channel.');
+      once('dnb', S.dnbr < C.DNBR_LIM, 'DNB ratio below the 1.3 limit: the hottest rods risk a boiling crisis and cladding overheating.');
+      once('dry', S.sg < 0.1, 'Steam generators almost dry: heat removal from the primary circuit is failing.');
 
       // turbine-generator
       if (S.online) {
@@ -155,13 +224,28 @@
         S.rpm = Math.max(0, S.rpm - (S.rpm * 0.004 + 1.5) * dt);
       }
 
-      // emergency protection
-      if (!S.scram) {
+      // emergency protection (can be switched off to study a failure to scram)
+      if (!S.scram && S.autoProt) {
+        const dead = S.seized.indexOf(true);
         if (Pth > C.TRIP_POWER) scram('Scram: power above 112 %');
         else if (coreOut() > C.TRIP_TOUT) scram('Scram: core outlet above 335 °C');
-        else if (on <= 2 && S.n > 0.3) scram('Scram: two or more coolant pumps lost');
+        else if (on <= 2 && S.n > 0.3 && S.flow < 0.93) scram('Scram: two or more coolant pumps lost');
+        else if (dead >= 0 && S.n > 0.3) scram('Scram: no pressure difference across pump ' + (dead + 1));
+        else if (S.sg < C.SG_LOW && S.n > 0.05) scram('Scram: steam generator water level low');
       }
       S.t += dt;
+    }
+
+    /** restart at full power and schedule a scenario's events; returns false for an unknown id */
+    function runScenario(id) {
+      const sc = SCENARIOS.find(s => s.id === id);
+      if (!sc) return false;
+      reset();
+      S.scenario = id;
+      log('Plant at full power. ' + sc.name + ' in 5 s' + (S.autoProt ? '.' : ', with automatic protection switched off.'));
+      sc.events.forEach(e => S.plan.push({ t: e[0], text: e[1], fn: e[2] }));
+      S.plan.sort((a, b) => a.t - b.t);
+      return true;
     }
 
     /** advance the model by simDt seconds of plant time */
@@ -173,18 +257,44 @@
       S.inv += (dl - S.inv) * Math.min(1, simDt / 0.8);
       S.period = Math.abs(S.inv) < 1e-3 ? Infinity : 1 / S.inv;
       // period protection works in the source and intermediate ranges
-      if (!S.scram && S.period > 0 && S.period < C.TRIP_PERIOD && S.n > 1e-4 && S.n < 0.1) {
+      if (!S.scram && S.autoProt && S.period > 0 && S.period < C.TRIP_PERIOD && S.n > 1e-4 && S.n < 0.1) {
         scram('Scram: reactor period below 10 s');
       }
     }
 
-    reset();
-    return {
+    const api = {
       S, reset, step, advance, scram, resetProtection, setRodHeight, holdRods,
-      startTurbine, tripTurbine, regX, coreDT, coreIn, coreOut, decayHeat, pumpsOn, onGrid,
-      rodHeight, targetHeight
+      startTurbine, tripTurbine, regX, coreDT, coreIn, coreOut, hotOut, decayHeat, pumpsOn, onGrid,
+      rodHeight, targetHeight, runScenario, log
     };
+    reset();
+    return api;
   }
+
+  /* ---------- accident scenarios: each event is [time s, what happens, action] ---------- */
+  const SCENARIOS = [
+    { id: 'lofa', group: 'Loss of flow', name: 'All four pumps lose power',
+      what: 'Loss of forced circulation. Flow coasts down on the pump flywheels while the core still makes heat.',
+      events: [[5, 'Power to all four main coolant pumps is lost. Their flywheels keep them turning as they slow down.', R => { R.S.pumps.fill(false); }]] },
+    { id: 'pump1', group: 'Loss of flow', name: 'One pump trips',
+      what: 'Partial loss of flow. Three pumps keep running and the reactor is run back instead of scrammed.',
+      events: [[5, 'Main coolant pump 1 trips and coasts down.', R => { R.S.pumps[0] = false; }]] },
+    { id: 'seize', group: 'Loss of flow', name: 'Pump shaft seizes',
+      what: 'Locked rotor. Flow in one loop stops at once, the fastest flow drop a PWR is designed for.',
+      events: [[5, 'Pump 1 shaft seizes. Flow through loop 1 stops at once.', R => { R.S.pumps[0] = false; R.S.seized[0] = true; }]] },
+    { id: 'lofw', group: 'Loss of heat sink', name: 'Loss of feedwater',
+      what: 'The steam generators keep boiling but nothing refills them, so the plant slowly loses its heat sink.',
+      events: [[5, 'Main feedwater pumps stop. The steam generators boil off their water with nothing coming in.', R => { R.S.feed = false; }]] },
+    { id: 'sbo', group: 'Loss of heat sink', name: 'Station blackout',
+      what: 'No AC power on site: pumps, turbine and feedwater all stop. Only passive systems are left.',
+      events: [
+        [5, 'Grid and diesel generators lost: no AC power on site. Pumps, turbine and feedwater all stop.', R => { R.S.pumps.fill(false); R.tripTurbine(); R.S.feed = false; R.S.efwAvail = false; }],
+        [8, 'Passive heat removal system: air dampers open on their own. Steam condenses in air-cooled heat exchangers above containment and drains back to the steam generators.', R => { R.S.phrs = true; }]
+      ] },
+    { id: 'rodw', group: 'Reactivity', name: 'Uncontrolled rod withdrawal',
+      what: 'A drive-control fault pulls the regulating group out and ignores the interlocks that would stop it.',
+      events: [[5, 'Rod drive control fails: the regulating group starts withdrawing and ignores the interlocks.', R => { R.S.driveFault = true; R.S.rodTarget = 0; }]] }
+  ];
 
   /* ---------- core layout: 163 hexagonal assemblies ---------- */
   function buildCore() {
@@ -323,7 +433,7 @@
   const qAvg = p => p * C.P_NOM * 1e6 / (C.N_RODS * C.ACTIVE_H);
 
   return {
-    C, BETA, LAMB, worth, createReactor, buildCore, assemblyPowers, BATCH,
+    C, BETA, LAMB, worth, createReactor, SCENARIOS, buildCore, assemblyPowers, BATCH,
     buildAssembly, pinFactor, ROD, kUO2, rodProfile, qAvg, clamp
   };
 });

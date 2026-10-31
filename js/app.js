@@ -137,11 +137,106 @@
   $('#scram').addEventListener('click', () => R.scram('Scram: manual emergency protection'));
   $('#turb').addEventListener('click', () => { if (S.online) R.tripTurbine(); else R.startTurbine(); });
   $('#resetTrip').addEventListener('click', () => R.resetProtection());
-  $('#resetAll').addEventListener('click', () => { R.reset(); $('#boron').value = C.B0; hist.length = 0; renderPumps(); });
-  document.querySelectorAll('.speed button').forEach(b => b.addEventListener('click', () => {
-    speed = +b.dataset.speed;
-    document.querySelectorAll('.speed button').forEach(x => x.setAttribute('aria-pressed', x === b));
-  }));
+  $('#resetAll').addEventListener('click', () => { R.reset(); $('#boron').value = C.B0; hist.length = 0; renderPumps(); endScenario(); });
+  function setSpeed(v) {
+    speed = v;
+    document.querySelectorAll('.speed button').forEach(x => x.setAttribute('aria-pressed', +x.dataset.speed === v));
+  }
+  document.querySelectorAll('.speed button').forEach(b => b.addEventListener('click', () => setSpeed(+b.dataset.speed)));
+
+  /* ---------- accident scenarios ---------- */
+  const scenList = $('#scenList'), autoProt = $('#autoProt'), evlog = $('#evlog');
+  const trace = []; let traceAcc = 0, logShown = 0;
+  [...new Set(P.SCENARIOS.map(s => s.group))].forEach(g => {
+    const box = document.createElement('div'); box.className = 'scen-group';
+    box.innerHTML = '<h3>' + g + '</h3><div></div>';
+    P.SCENARIOS.filter(s => s.group === g).forEach(s => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'scen-btn'; b.dataset.id = s.id; b.setAttribute('aria-pressed', 'false');
+      b.innerHTML = '<b></b><span></span>';
+      b.firstChild.textContent = s.name; b.lastChild.textContent = s.what;
+      b.addEventListener('click', () => startScenario(s.id));
+      box.lastChild.appendChild(b);
+    });
+    scenList.appendChild(box);
+  });
+  autoProt.addEventListener('change', () => { S.autoProt = autoProt.checked; });
+  function startScenario(id) {
+    S.autoProt = autoProt.checked;
+    R.runScenario(id);
+    $('#boron').value = C.B0; hist.length = 0; renderPumps();
+    trace.length = 0; traceAcc = 0; logShown = 0; evlog.innerHTML = '';
+    const sc = P.SCENARIOS.find(s => s.id === id);
+    $('#scenName').textContent = sc.name + (S.autoProt ? '' : ', no automatic protection');
+    $('#scenRun').hidden = false;
+    document.querySelectorAll('.scen-btn').forEach(b => b.setAttribute('aria-pressed', b.dataset.id === id));
+    setSpeed(1);
+    if (plant) plant.setView(id === 'lofw' || id === 'sbo' ? 'steam' : 'core');
+    sizeCanvases();
+  }
+  function endScenario() {
+    $('#scenRun').hidden = true; trace.length = 0;
+    document.querySelectorAll('.scen-btn').forEach(b => b.setAttribute('aria-pressed', 'false'));
+  }
+  function sampleTrace(simDt) {
+    if (!S.scenario) return;
+    traceAcc += simDt;
+    if (traceAcc < 0.1) return;
+    traceAcc = 0;
+    trace.push({ t: S.t, p: S.Pth, f: S.flow, q: S.qsg, th: R.hotOut() });
+    if (trace.length > 3000) for (let i = trace.length - 1; i > 0; i -= 2) trace.splice(i, 1);  // keep every other point
+  }
+  const BAD = /Scram|DNB|boiling|dry|fails|lost|seizes|stop/;
+  function renderLog() {
+    if (!S.scenario) return;
+    $('#scenClock').textContent = 't = ' + fmt(S.t, S.t < 100 ? 1 : 0) + ' s';
+    while (logShown < S.log.length) {
+      const e = S.log[logShown++], li = document.createElement('li');
+      li.innerHTML = '<time></time><span></span>';
+      li.firstChild.textContent = fmt(e.t, e.t < 100 ? 1 : 0) + ' s';
+      li.lastChild.textContent = e.text;
+      if (BAD.test(e.text) && e.t > 0) li.className = 'bad';
+      evlog.appendChild(li);
+      evlog.scrollTop = evlog.scrollHeight;
+    }
+  }
+  function drawTrace() {
+    if (!S.scenario || $('#scenRun').hidden) return;
+    const cs = getComputedStyle(document.documentElement), W = tplot.width, Hh = tplot.height;
+    if (!W) return;
+    const d = W / tplot.clientWidth, L = 38 * d, Rr = W - 6 * d;
+    const tMax = Math.max(60, Math.ceil((trace.length ? trace[trace.length - 1].t : 0) / 30) * 30);
+    const X = t => L + (Rr - L) * t / tMax;
+    // upper panel: percent of rated; lower panel: hottest channel outlet temperature
+    const a0 = 8 * d, a1 = Hh * 0.55, b0 = Hh * 0.55 + 16 * d, b1 = Hh - 20 * d;
+    const Yp = v => a1 - (a1 - a0) * Math.min(v, 1.3) / 1.3;
+    const T0 = 280, T1 = 370, Yt = T => b1 - (b1 - b0) * (Math.min(Math.max(T, T0), T1) - T0) / (T1 - T0);
+    tg.clearRect(0, 0, W, Hh);
+    tg.font = (11 * d) + 'px Barlow, sans-serif'; tg.lineWidth = 1;
+    const ink2 = cs.getPropertyValue('--ink-2'), rule = cs.getPropertyValue('--rule');
+    const hline = (y, label, dash) => {
+      tg.strokeStyle = rule; tg.setLineDash(dash ? [4 * d, 3 * d] : []);
+      tg.beginPath(); tg.moveTo(L, y); tg.lineTo(Rr, y); tg.stroke(); tg.setLineDash([]);
+      tg.fillStyle = ink2; tg.textAlign = 'right'; tg.fillText(label, L - 4 * d, y + 4 * d);
+    };
+    [0, 0.5, 1].forEach(v => hline(Yp(v), (v * 100) + ' %'));
+    [290, 320].forEach(T => hline(Yt(T), T + ' °C'));
+    tg.strokeStyle = cs.getPropertyValue('--hot'); tg.setLineDash([4 * d, 3 * d]);
+    tg.beginPath(); tg.moveTo(L, Yt(C.TSAT_P)); tg.lineTo(Rr, Yt(C.TSAT_P)); tg.stroke(); tg.setLineDash([]);
+    tg.fillStyle = cs.getPropertyValue('--hot'); tg.textAlign = 'left';
+    tg.fillText('boiling at 16.2 MPa', L + 4 * d, Yt(C.TSAT_P) - 4 * d);
+    tg.fillStyle = ink2; tg.textAlign = 'center';
+    for (let t = 0; t <= tMax; t += tMax / 4) tg.fillText(fmt(t) + ' s', X(t), Hh - 4 * d);
+    const line = (key, Y, col) => {
+      tg.strokeStyle = col; tg.lineWidth = 2 * d; tg.beginPath();
+      trace.forEach((p, i) => { const x = X(p.t), y = Y(p[key]); if (i) tg.lineTo(x, y); else tg.moveTo(x, y); });
+      tg.stroke();
+    };
+    line('f', Yp, cs.getPropertyValue('--cold'));
+    line('q', Yp, cs.getPropertyValue('--steam'));
+    line('p', Yp, cs.getPropertyValue('--hot'));
+    line('th', Yt, cs.getPropertyValue('--ink'));
+  }
   $('#xsOpen').addEventListener('click', () => XS.open('core'));
 
   /* ---------- readouts ---------- */
@@ -166,11 +261,22 @@
     $('#per').textContent = !isFinite(S.period) || Math.abs(S.period) > 999 ? '∞' : fmt(S.period, 1) + ' s';
     $('#flow').textContent = fmt(S.flow * 100) + ' %';
     $('#tin').textContent = fmt(R.coreIn(), 1) + ' °C';
-    $('#tout').textContent = fmt(R.coreOut(), 1) + ' °C';
+    const to = R.coreOut();
+    $('#tout').textContent = to >= C.TSAT_P ? 'Boiling' : fmt(to, 1) + ' °C';
+    $('#tout').classList.toggle('warn', to >= C.TSAT_P);
     $('#tf').textContent = fmt(S.Tf) + ' °C';
     $('#rpm').textContent = fmt(S.rpm) + ' rpm';
     $('#dh').textContent = fmt(R.decayHeat() * 100, 2) + ' %';
     $('#bor').textContent = fmt(S.boron) + ' ppm';
+    const dn = $('#dnbr');
+    dn.textContent = S.dnbr > 9.9 ? '> 10' : fmt(S.dnbr, 2);
+    dn.classList.toggle('warn', S.dnbr < C.DNBR_LIM);
+    const th = R.hotOut(), tv = $('#thot');
+    tv.textContent = th >= C.TSAT_P ? 'Boiling' : fmt(th, 1) + ' °C';
+    tv.classList.toggle('warn', th >= C.TSAT_P);
+    $('#sgl').textContent = fmt(S.sg * 100) + ' %';
+    $('#sgl').classList.toggle('warn', S.sg < C.SG_LOW);
+    if (autoProt.checked !== S.autoProt) autoProt.checked = S.autoProt;
     const np = S.n * 100;
     $('#npow').textContent = np >= 0.1 ? fmt(np, np >= 10 ? 0 : 1) + ' %' : np.toExponential(1) + ' %';
     $('#nbar').style.width = clamp((Math.log10(S.n) + 8) / 8, 0, 1) * 100 + '%';
@@ -207,9 +313,10 @@
   /* ---------- power history ---------- */
   const hist = []; let histAcc = 0;
   const plot = $('#plot'), pg = plot.getContext('2d'), fis = $('#fis'), fg = fis.getContext('2d');
+  const tplot = $('#tplot'), tg = tplot.getContext('2d');
   function sizeCanvases() {
     const d = Math.min(window.devicePixelRatio || 1, 2);
-    [plot, fis].forEach(c => { c.width = Math.round(c.clientWidth * d); c.height = Math.round(c.clientHeight * d); });
+    [plot, fis, tplot].forEach(c => { c.width = Math.round(c.clientWidth * d); c.height = Math.round(c.clientHeight * d); });
   }
   function sample(simDt) {
     histAcc += simDt;
@@ -305,11 +412,11 @@
   function frame(now) {
     const rdt = Math.min(0.05, Math.max(0, (now - last) / 1000)); last = now;
     const simDt = rdt * speed;
-    R.advance(simDt); sample(simDt);
+    R.advance(simDt); sample(simDt); sampleTrace(simDt);
     if (plant) plant.update(rdt);
     updateFis(rdt);
-    uiT += rdt; if (uiT > 0.1) { uiT = 0; updateUI(); }
-    plotT += rdt; if (plotT > 0.25) { plotT = 0; drawPlot(); }
+    uiT += rdt; if (uiT > 0.1) { uiT = 0; updateUI(); renderLog(); }
+    plotT += rdt; if (plotT > 0.25) { plotT = 0; drawPlot(); drawTrace(); }
     xsT += rdt; if (xsT > 0.5) { xsT = 0; XS.tick(); }
     infoT += rdt; if (infoT > 0.3) { infoT = 0; refreshInfo(); }
     requestAnimationFrame(frame);
