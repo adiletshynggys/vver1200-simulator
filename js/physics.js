@@ -23,9 +23,9 @@
     P_NOM: 3200,            // MWt
     PE_NOM: 1200,           // MWe gross
     TF0: 900,               // core-average fuel temperature at 100 %, °C (lumped)
-    TM0: 311.6,             // core-average coolant temperature at 100 %, °C
+    TM0: 313.55,            // core-average coolant temperature at 100 %, °C
     TS: 285.8,              // saturation temperature at 7.0 MPa, °C
-    DT_CORE: 26.8,          // core ΔT at 100 % power and flow, K
+    DT_CORE: 30.7,          // core ΔT at 100 % power and flow, K (298.2 °C in, 328.9 °C out)
     P_PRIMARY: 16.2, P_STEAM: 7.0,
     W_REG: 3000,            // regulating group worth, pcm (exaggerated, see README)
     W_SD: 9000,             // shutdown banks worth, pcm
@@ -38,8 +38,8 @@
     BORON_RATE: 1.5,        // ppm/s
     DH_A: [0.015, 0.02, 0.03], DH_T: [3, 40, 1000],
     SRC: 3e-4,              // neutron source term, relative units per s
-    TRIP_POWER: 1.12, TRIP_TOUT: 335, TRIP_PERIOD: 10,
-    BLOCK_PERIOD: 20, BLOCK_POWER: 1.04, BLOCK_TOUT: 330,
+    TRIP_POWER: 1.12, TRIP_TOUT: 337, TRIP_PERIOD: 10,
+    BLOCK_PERIOD: 20, BLOCK_POWER: 1.04, BLOCK_TOUT: 332,
     N_FA: 163, PINS_PER_FA: 312, ACTIVE_H: 3.73, KZ_MID: 1.3,
     ETA: 1200 / 3200,
     BETA_TOTAL: BT,
@@ -48,7 +48,7 @@
     PUMP_START: 4,          // pump run-up time constant, s
     NC: 0.1,                // natural-circulation flow at full core heat, fraction of nominal (∝ heat^1/3)
     TSAT_P: 348,            // saturation temperature at 16.2 MPa, °C
-    F_DH: 1.4,              // hot-channel enthalpy-rise factor
+    F_DH: 1.3,              // hot-channel enthalpy-rise factor
     DNBR0: 1.9, DNBR_LIM: 1.3,
     SG_INV: 300,            // steam generator water inventory, in seconds of full-power boil-off
     SG_LOW: 0.4,            // scram on low steam generator level, fraction of normal inventory
@@ -79,7 +79,7 @@
         Ps: 1, online: true, rpm: 3000,
         inv: 0, period: Infinity, rho: 0, parts: { rods: 0, boron: 0, dop: 0, mod: 0 },
         Pth: 1, qsg: 1, qfc: 1, dnbr: C.DNBR0, t: 0,
-        sg: 1, feed: true, efwAvail: true, efw: false, efwT: 0, phrs: false,
+        sg: 1, cond: true, vent: 0, feed: true, efwAvail: true, efw: false, efwT: 0, phrs: false,
         autoProt, driveFault: false, prc: false,
         scenario: null, plan: [], log: [], flags: {}
       });
@@ -132,7 +132,7 @@
         else if (S.sdX > 0.001) block = 'Waiting for the shutdown banks to withdraw';
         else if (S.period > 0 && S.period < C.BLOCK_PERIOD) block = 'Withdrawal blocked: period below 20 s';
         else if (S.Pth > C.BLOCK_POWER) block = 'Withdrawal blocked: power above 104 %';
-        else if (coreOut() > C.BLOCK_TOUT) block = 'Withdrawal blocked: core outlet above 330 °C';
+        else if (coreOut() > C.BLOCK_TOUT) block = 'Withdrawal blocked: core outlet above 332 °C';
       }
       S.block = block;
       if (!block) S.rodX += clamp(S.rodTarget - S.rodX, -C.ROD_SPEED * dt, C.ROD_SPEED * dt);
@@ -200,6 +200,7 @@
       }
       const feedIn = S.feed ? qsg + (1 - S.sg) * 0.05 : S.efw ? (S.sg < 1 ? C.EFW : Math.min(C.EFW, qsg)) : 0;
       const steamLoss = S.phrs ? Math.max(0, qsg - C.PHRS) : qsg;
+      S.vent = S.cond ? 0 : steamLoss;   // with no condenser the steam goes to atmosphere
       S.sg = clamp(S.sg + (feedIn - steamLoss) * dt / C.SG_INV, 0, 1);
 
       // departure-from-nucleate-boiling ratio on the hottest rod (teaching correlation):
@@ -228,7 +229,7 @@
       if (!S.scram && S.autoProt) {
         const dead = S.seized.indexOf(true);
         if (Pth > C.TRIP_POWER) scram('Scram: power above 112 %');
-        else if (coreOut() > C.TRIP_TOUT) scram('Scram: core outlet above 335 °C');
+        else if (coreOut() > C.TRIP_TOUT) scram('Scram: core outlet above 337 °C');
         else if (on <= 2 && S.n > 0.3 && S.flow < 0.93) scram('Scram: two or more coolant pumps lost');
         else if (dead >= 0 && S.n > 0.3) scram('Scram: no pressure difference across pump ' + (dead + 1));
         else if (S.sg < C.SG_LOW && S.n > 0.05) scram('Scram: steam generator water level low');
@@ -288,7 +289,7 @@
     { id: 'sbo', group: 'Loss of heat sink', name: 'Station blackout',
       what: 'No AC power on site: pumps, turbine and feedwater all stop. Only passive systems are left.',
       events: [
-        [5, 'Grid and diesel generators lost: no AC power on site. Pumps, turbine and feedwater all stop.', R => { R.S.pumps.fill(false); R.tripTurbine(); R.S.feed = false; R.S.efwAvail = false; }],
+        [5, 'Grid and diesel generators lost: no AC power on site. Pumps, turbine and feedwater all stop.', R => { R.S.pumps.fill(false); R.tripTurbine(); R.S.feed = false; R.S.efwAvail = false; R.S.cond = false; }],
         [8, 'Passive heat removal system: air dampers open on their own. Steam condenses in air-cooled heat exchangers above containment and drains back to the steam generators.', R => { R.S.phrs = true; }]
       ] },
     { id: 'rodw', group: 'Reactivity', name: 'Uncontrolled rod withdrawal',

@@ -35,7 +35,7 @@
   const pe = () => Math.max(0, S.Ps * C.PE_NOM);
   const loopName = d => (d && d.loop != null ? ' ' + (d.loop + 1) : '');
   const INFO = {
-    reactor: { title: () => 'Reactor', text: 'Pressure vessel holding 163 fuel assemblies with 3.73 m of fuel height. Water at 16.2 MPa enters near 298 °C and leaves near 325 °C. The blue glow is Cherenkov light: fast electrons outrunning light in water.',
+    reactor: { title: () => 'Reactor', text: 'Pressure vessel holding 163 fuel assemblies with 3.73 m of fuel height. Water at 16.2 MPa enters near 298 °C and leaves near 329 °C. The blue glow is Cherenkov light: fast electrons outrunning light in water.',
       live: () => fmt(S.Pth * C.P_NOM) + ' MWt now, coolant in ' + fmt(R.coreIn(), 1) + ' °C, out ' + fmt(R.coreOut(), 1) + ' °C',
       go: () => ({ label: 'Open core cross-section', act: () => XS.open('core') }) },
     sg: { title: d => 'Steam generator' + loopName(d), text: 'A horizontal steam generator, a VVER signature; most Western PWRs use vertical U-tubes. Primary water runs through thousands of horizontal tubes and boils the water around them into steam at about 7 MPa.',
@@ -51,6 +51,8 @@
     condenser: { title: () => 'Condenser', text: 'Turns turbine exhaust back into water under vacuum. About two thirds of the reactor heat leaves the plant here.',
       live: () => 'Rejecting about ' + fmt(Math.max(0, S.qsg * C.P_NOM - pe())) + ' MW' },
     feedpump: { title: () => 'Feedwater pump', text: 'Pushes condensate back to the steam generators. Heaters and the deaerator are not drawn.' },
+    phrs: { title: () => 'Passive heat removal system', text: 'Air-cooled heat exchangers on the containment wall, a VVER-1200 safety feature. With no electricity at all, steam from the steam generators condenses here in outside air and drains back by gravity, carrying decay heat away for days.',
+      live: () => S.phrs ? 'Working: removing up to ' + fmt(C.PHRS * C.P_NOM) + ' MW with no pumps or power' : 'Standing by. Run the station blackout scenario to see it work.' },
     tower: { title: () => 'Cooling tower', text: 'Rejects the condenser heat to the air. The plume grows and shrinks with the heat being dumped.',
       live: () => 'About ' + fmt(Math.max(0, S.qsg * C.P_NOM - pe())) + ' MW of waste heat' }
   };
@@ -168,14 +170,15 @@
     trace.length = 0; traceAcc = 0; logShown = 0; evlog.innerHTML = '';
     const sc = P.SCENARIOS.find(s => s.id === id);
     $('#scenName').textContent = sc.name + (S.autoProt ? '' : ', no automatic protection');
-    $('#scenRun').hidden = false;
+    $('#scenRun').hidden = false; $('#hud').hidden = false;
+    $('#hudName').textContent = sc.name;
     document.querySelectorAll('.scen-btn').forEach(b => b.setAttribute('aria-pressed', b.dataset.id === id));
     setSpeed(1);
     if (plant) plant.setView(id === 'lofw' || id === 'sbo' ? 'steam' : 'core');
     sizeCanvases();
   }
   function endScenario() {
-    $('#scenRun').hidden = true; trace.length = 0;
+    $('#scenRun').hidden = true; $('#hud').hidden = true; trace.length = 0;
     document.querySelectorAll('.scen-btn').forEach(b => b.setAttribute('aria-pressed', 'false'));
   }
   function sampleTrace(simDt) {
@@ -189,7 +192,14 @@
   const BAD = /Scram|DNB|boiling|dry|fails|lost|seizes|stop/;
   function renderLog() {
     if (!S.scenario) return;
-    $('#scenClock').textContent = 't = ' + fmt(S.t, S.t < 100 ? 1 : 0) + ' s';
+    const clockTxt = S.t < 120 ? 't = ' + fmt(S.t, 1) + ' s' : 't = ' + Math.floor(S.t / 60) + ' min ' + fmt(S.t % 60) + ' s';
+    $('#scenClock').textContent = clockTxt; $('#hudClock').textContent = clockTxt;
+    $('#hudP').textContent = fmt(S.Pth * 100) + ' %';
+    $('#hudF').textContent = fmt(S.flow * 100) + ' %';
+    $('#hudQ').textContent = fmt(S.qsg * 100) + ' %';
+    const hd = $('#hudD'); hd.textContent = S.dnbr > 9.9 ? '> 10' : fmt(S.dnbr, 2); hd.classList.toggle('warn', S.dnbr < C.DNBR_LIM);
+    const lastEv = S.log[S.log.length - 1], hm = $('#hudMsg');
+    if (lastEv && hm.textContent !== lastEv.text) { hm.textContent = lastEv.text; hm.classList.toggle('bad', BAD.test(lastEv.text) && lastEv.t > 0); }
     while (logShown < S.log.length) {
       const e = S.log[logShown++], li = document.createElement('li');
       li.innerHTML = '<time></time><span></span>';
@@ -223,8 +233,8 @@
     [290, 320].forEach(T => hline(Yt(T), T + ' °C'));
     tg.strokeStyle = cs.getPropertyValue('--hot'); tg.setLineDash([4 * d, 3 * d]);
     tg.beginPath(); tg.moveTo(L, Yt(C.TSAT_P)); tg.lineTo(Rr, Yt(C.TSAT_P)); tg.stroke(); tg.setLineDash([]);
-    tg.fillStyle = cs.getPropertyValue('--hot'); tg.textAlign = 'left';
-    tg.fillText('boiling at 16.2 MPa', L + 4 * d, Yt(C.TSAT_P) - 4 * d);
+    tg.fillStyle = cs.getPropertyValue('--hot'); tg.textAlign = 'right';
+    tg.fillText('boils above 348 °C', Rr - 2 * d, Yt(C.TSAT_P) + 13 * d);
     tg.fillStyle = ink2; tg.textAlign = 'center';
     for (let t = 0; t <= tMax; t += tMax / 4) tg.fillText(fmt(t) + ' s', X(t), Hh - 4 * d);
     const line = (key, Y, col) => {
@@ -410,8 +420,9 @@
   renderPumps(); resizeAll(); applyHash();
   let last = performance.now(), uiT = 1, plotT = 1, xsT = 0, infoT = 0;
   function frame(now) {
-    const rdt = Math.min(0.05, Math.max(0, (now - last) / 1000)); last = now;
-    const simDt = rdt * speed;
+    // plant time follows the wall clock even when frames are slow; only the animation step is capped
+    const real = Math.min(0.25, Math.max(0, (now - last) / 1000)), rdt = Math.min(0.05, real); last = now;
+    const simDt = real * speed;
     R.advance(simDt); sample(simDt); sampleTrace(simDt);
     if (plant) plant.update(rdt);
     updateFis(rdt);

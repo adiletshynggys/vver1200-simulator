@@ -61,6 +61,23 @@ button,input{font:inherit;color:inherit}
 .info .live{margin-top:6px;color:var(--stage-ink);font-size:14px;font-variant-numeric:tabular-nums}
 .info .x{position:absolute;top:4px;right:4px;background:none;border:0;color:var(--stage-ink-2);font-size:22px;line-height:1;padding:4px 9px;cursor:pointer}
 .info .go{margin-top:9px;background:#e6eee8;color:#0b1216;border:0;border-radius:4px;padding:6px 10px;font:600 14px "Barlow Condensed",Barlow,sans-serif;cursor:pointer}
+.hud{position:absolute;right:10px;top:92px;width:min(300px,calc(100% - 20px));background:rgba(10,18,22,.88);border:1px solid rgba(160,190,175,.25);border-radius:6px;padding:10px 12px 11px;backdrop-filter:blur(8px)}
+.hud-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.hud-top b{font:600 17px/1.2 "Barlow Condensed",Barlow,sans-serif}
+.hud-top span{font-size:13px;color:var(--stage-ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.hud-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:8px 0 0}
+.hud-grid dt{font-size:11.5px;line-height:1.2;color:var(--stage-ink-2)}
+.hud-grid dd{margin:1px 0 0;font:600 20px/1.1 "Barlow Condensed",Barlow,sans-serif;font-variant-numeric:tabular-nums}
+.hud-grid dd.warn{color:#ff7a66}
+.hud p{margin:9px 0 0;padding-top:8px;border-top:1px solid rgba(160,190,175,.2);font-size:13px;line-height:1.35;color:var(--stage-ink)}
+.hud p.bad{color:#ff9a8a}
+@media (max-width:760px){
+  .hud{top:auto;bottom:30px;left:10px;right:10px;width:auto}
+  .hud:not([hidden]) ~ .info{bottom:auto;top:52px}
+  .hud:not([hidden]) ~ .hint{display:none}
+  .hud p{display:none}
+  .trip{top:90px}
+}
 .hint{position:absolute;right:10px;bottom:8px;left:10px;margin:0;color:var(--stage-ink-2);font-size:12px;text-align:right;pointer-events:none}
 
 /* panel */

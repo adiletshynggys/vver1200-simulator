@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>VVER-1200 plant simulator</title>
 <meta name="description" content="Interactive 3D VVER-1200 nuclear power plant: point-kinetics reactor model, control rods, primary and secondary circuits, turbine and core cross-sections.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230b1216'/%3E%3Cpath d='M16 5l9.5 5.5v11L16 27l-9.5-5.5v-11z' fill='none' stroke='%2345aaff' stroke-width='2.4'/%3E%3Ccircle cx='16' cy='16' r='3.6' fill='%23ffc83a'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
@@ -22,6 +23,16 @@
       <button type="button" data-view="turbine">Turbine hall</button>
     </nav>
     <div class="trip" id="trip" hidden></div>
+    <div class="hud" id="hud" hidden aria-live="off">
+      <div class="hud-top"><b id="hudName"></b><span id="hudClock"></span></div>
+      <dl class="hud-grid">
+        <div><dt>Power</dt><dd id="hudP"></dd></div>
+        <div><dt>Core flow</dt><dd id="hudF"></dd></div>
+        <div><dt>Heat out</dt><dd id="hudQ"></dd></div>
+        <div><dt>DNB ratio</dt><dd id="hudD"></dd></div>
+      </dl>
+      <p id="hudMsg"></p>
+    </div>
     <div class="info" id="info" hidden>
       <button type="button" class="x" id="infoClose" aria-label="Close">×</button>
       <h3 id="infoTitle"></h3>
@@ -35,7 +46,7 @@
   <aside class="panel">
     <div class="head">
       <h1>VVER-1200 plant simulator</h1>
-      <p>Drive the control rods, trip pumps, scram the reactor and follow the heat all the way to the grid.</p>
+      <p>Drive the control rods, trip pumps, scram the reactor, run accident scenarios and follow the heat all the way to the grid.</p>
     </div>
     <div class="pipes-key" aria-label="Pipe colours">
       <span><i style="background:var(--hot)"></i>Hot leg</span>
@@ -53,14 +64,14 @@
       <div><span class="k">Reactivity</span><span class="v" id="rho">0 pcm</span></div>
       <div><span class="k">Reactor period</span><span class="v" id="per">∞</span></div>
       <div><span class="k">Core flow</span><span class="v" id="flow">100 %</span></div>
-      <div><span class="k">Core inlet</span><span class="v" id="tin">298 °C</span></div>
-      <div><span class="k">Core outlet</span><span class="v" id="tout">325 °C</span></div>
+      <div><span class="k">Core inlet</span><span class="v" id="tin">298.2 °C</span></div>
+      <div><span class="k">Core outlet</span><span class="v" id="tout">328.9 °C</span></div>
       <div><span class="k">Fuel average</span><span class="v" id="tf">900 °C</span></div>
       <div><span class="k">Turbine speed</span><span class="v" id="rpm">3000 rpm</span></div>
       <div><span class="k">Decay heat</span><span class="v" id="dh">6.5 %</span></div>
       <div><span class="k">Boric acid</span><span class="v" id="bor">600 ppm</span></div>
       <div><span class="k">DNB ratio <abbr title="Departure from nucleate boiling: how far the hottest rod is from a boiling crisis. Limit 1.3.">?</abbr></span><span class="v" id="dnbr">1.90</span></div>
-      <div><span class="k">Hottest channel out</span><span class="v" id="thot">336 °C</span></div>
+      <div><span class="k">Hottest channel out</span><span class="v" id="thot">338.1 °C</span></div>
       <div><span class="k">SG water level</span><span class="v" id="sgl">100 %</span></div>
     </div>
     <div class="logm">
@@ -166,7 +177,7 @@
       <summary>How this model works</summary>
       <p>Reactor power comes from point kinetics with six delayed-neutron groups for U-235 (β = 650 pcm, Λ = 20 µs) and a weak neutron source. Feedback is Doppler (−2.2 pcm/K on average fuel temperature) and moderator (−25 pcm/K on average coolant temperature), worth about 2000 pcm between hot zero power and full power.</p>
       <p>Heat flows through two lumps, fuel and coolant, to steam generators held at 7.0 MPa (285.8 °C). Decay heat is three exponential groups totalling 6.5 % of fission power. Electrical output is 37.5 % of the heat leaving the steam generators, so 3200 MWt gives 1200 MWe.</p>
-      <p>Interlocks follow VVER practice in simplified form: rod withdrawal is blocked below a 20 s period, above 104 % power or above 330 °C core outlet, and the reactor scrams on 112 % power, 335 °C outlet, a 10 s period in the startup range, or loss of two coolant pumps.</p>
+      <p>Interlocks follow VVER practice in simplified form: rod withdrawal is blocked below a 20 s period, above 104 % power or above 332 °C core outlet, and the reactor scrams on 112 % power, 337 °C outlet, a 10 s period in the startup range, or loss of two coolant pumps.</p>
       <p>Accident scenarios add a few more pieces. Pumps coast down on their flywheels (speed halves 15 s after losing power), and natural circulation carries about 10 % flow at full heat, falling with the cube root of the heat. The DNB ratio is a teaching estimate for the hottest rod: 1.9 at full power, scaled by the square root of flow and by subcooling, divided by the heat flux leaving the fuel; the design limit shown is 1.3. Steam generators hold about 5 minutes of full-power boil-off. Emergency feedwater starts 30 s after a low level and supplies 3 %. The passive heat removal system condenses up to 2 % of rated power and returns it. Pressure is held at 16.2 MPa throughout, so above 348 °C the page reports boiling instead of a temperature: the lumped model does not track steam in the core.</p>
       <p>The cross-sections use the TVS-2006 assembly geometry. Rod temperatures come from a steady conduction solution with temperature-dependent UO₂ conductivity (Fink 2000), a 6000 W/m²·K gap and Zr-1%Nb cladding, at the mid-plane with an axial factor of 1.3. The loading pattern and control cluster map are illustrative, not a real VVER-1200 core design.</p>
       <p>This is a teaching model, not plant-simulator practice. Real VVER analysis couples 3D nodal neutronics to system codes such as KORSAR or RELAP. The regulating group is worth 3000 pcm here so rods alone can cover the power defect; real plants share that job with boric acid. Rods move at 1 % of core height per second, about twice real speed. The turbine spin is slowed for viewing; on the grid it always turns at 3000 rpm.</p>

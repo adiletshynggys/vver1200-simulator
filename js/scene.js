@@ -13,10 +13,18 @@
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.outputEncoding = THREE.sRGBEncoding;
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.shadowMap.autoUpdate = false;     // the scene barely moves: refresh shadows a few times a second
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0b1216);
-    scene.fog = new THREE.Fog(0x0b1216, 170, 420);
+    const FOG = 0x010305;     // linear value that displays as the #15222a horizon
+    scene.background = (function () {
+      const c = document.createElement('canvas'); c.width = 2; c.height = 256;
+      const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
+      gr.addColorStop(0, '#0b141a'); gr.addColorStop(0.3, '#15222a'); gr.addColorStop(1, '#15222a');
+      g.fillStyle = gr; g.fillRect(0, 0, 2, 256);
+      const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t;
+    })();
+    scene.fog = new THREE.Fog(FOG, 170, 380);
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 800);
     scene.add(new THREE.HemisphereLight(0xc8dae8, 0x1b2621, 0.55));
     const sun = new THREE.DirectionalLight(0xfff4e6, 0.95);
@@ -58,9 +66,10 @@
       return m;
     }
 
-    const ground = add(new THREE.PlaneGeometry(600, 600), M(0x121a17, { metalness: 0, roughness: 1 }));
+    const ground = add(new THREE.PlaneGeometry(900, 900), M(0x070c0b, { metalness: 0, roughness: 1, envMapIntensity: 0.25 }));
     ground.rotation.x = -Math.PI / 2;
-    const grid = new THREE.GridHelper(600, 120, 0x2a3a33, 0x1f2b26);
+    const grid = new THREE.GridHelper(600, 60, 0x1c2a26, 0x131d1a);
+    grid.material.transparent = true; grid.material.opacity = 0.55;
     grid.position.y = 0.02; scene.add(grid);
 
     function glowTexture() {
@@ -206,7 +215,8 @@
       shaftMesh.instanceMatrix.needsUpdate = rodProxy.instanceMatrix.needsUpdate = true;
     }
     const COLD = new THREE.Color(0x6d7378), HOT = new THREE.Color(0xe8782c), WHITE = new THREE.Color(0xffd9a0), SEL = new THREE.Color(0x7fe3ff);
-    let selected = null;
+    let selected = null, clock = 0;
+    const CALM = new THREE.Color(0x45aaff), CALM2 = new THREE.Color(0x3aa4ff), ALARM = new THREE.Color(0xff4a1c);
     const cellIndex = new Map(core.cells.map((c, i) => [c, i]));
     function updateCore() {
       const K = P.assemblyPowers(core, R.regX(), S.sdX);
@@ -221,7 +231,12 @@
       fuelMesh.instanceColor.needsUpdate = true;
       const glow = Math.max(clamp(Math.sqrt(S.n), 0, 1.2), clamp((S.Pth - S.n * (1 - P.C.DH_SUM)) * 4, 0, 0.3));
       coreGlowMat.opacity = 0.015 + 0.11 * glow; waterMat.opacity = 0.015 + 0.05 * glow;
-      halo.material.opacity = 0.03 + 0.22 * glow; blueLight.intensity = 0.15 + 1.6 * glow;
+      // losing cooling margin: the glow turns from Cherenkov blue to a pulsing red-orange
+      const danger = clamp((P.C.DNBR_LIM - S.dnbr) / 0.5, 0, 1), pulse = 0.75 + 0.25 * Math.sin(clock * 7);
+      halo.material.color.copy(CALM).lerp(ALARM, danger); blueLight.color.copy(CALM).lerp(ALARM, danger);
+      coreGlowMat.color.copy(CALM2).lerp(ALARM, danger);
+      halo.material.opacity = (0.03 + 0.22 * glow) * (1 + danger * (1.6 * pulse - 0.2));
+      blueLight.intensity = (0.15 + 1.6 * glow) * (1 + danger * 1.5 * pulse);
     }
 
     /* ---------- four primary loops ---------- */
@@ -233,7 +248,8 @@
     const sgTubeMat = new THREE.MeshBasicMaterial({ color: 0xd8794a });
     const sgTubes = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05, 0.05, 10.4, 6), sgTubeMat, 4 * 5 * 7);
     let tI = 0;
-    const pumps = [], sgCenters = [], pumpPos = [], hotMid = [], coldMid = [];
+    const pumps = [], pumpMarks = [], sgCenters = [], sgWater = [], pumpPos = [], hotMid = [], coldMid = [];
+    const sgWaterMat = M(0x0e3f6e, { metalness: 0, roughness: 0.1, transparent: true, opacity: 0.72, depthWrite: false });
     const NOZ = 2.2;
     [45, 135, 225, 315].forEach((deg, k) => {
       const a = deg * Math.PI / 180, n = V(Math.sin(a), 0, Math.cos(a)), t = V(Math.cos(a), 0, -Math.sin(a));
@@ -242,6 +258,10 @@
       // local y along the shell axis, local z (the opening) pointing up
       const qSG = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(t.clone().cross(Y), t, Y));
       const shell = add(sgShellGeo, sgShellMat, c, 'sg'); shell.quaternion.copy(qSG); shell.userData.loop = k;
+      // boiling water on the secondary side: its surface drops as the steam generator loses inventory
+      const water = add(new THREE.PlaneGeometry(1, 1), sgWaterMat, c);
+      water.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(t, Y.clone().cross(t), Y));
+      water.userData.cy = c.y; sgWater.push(water);
       [6, -6].forEach((o, j) => {
         const cap = add(sgCapGeo[j], sgShellMat, c.clone().addScaledVector(t, o), 'sg');
         cap.quaternion.copy(qSG); cap.userData.loop = k;
@@ -271,7 +291,7 @@
       disc.userData = { pick: 'pump', loop: k }; pickables.push(disc); fly.add(disc);
       const mark = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.26, 0.16), new THREE.MeshBasicMaterial({ color: 0xffc83a }));
       mark.position.x = 0.45; fly.add(mark);
-      scene.add(fly); pumps.push(fly);
+      scene.add(fly); pumps.push(fly); pumpMarks.push(mark.material);
       // cold leg: down from the cold collector through the loop seal into the pump, then to the lower nozzle row
       pipe([V(cc.x, 11.7, cc.z), V(cc.x, 5.5, cc.z), V(Pp.x, 5.5, Pp.z), V(Pp.x, 7.95, Pp.z)], 0.45, 'cold', { bend: 1.0, loop: k });
       pipe([V(Pp.x, 9.4, Pp.z), pn.clone().multiplyScalar(NOZ).setY(9.4)], 0.45, 'cold', { loop: k });
@@ -372,8 +392,9 @@
     add(new THREE.BoxGeometry(4, 4.5, 3.5), M(0x58626a), V(80, 2.25, 9), 'generator');
     const pyl = [V(92, 0, 16), V(106, 0, 24), V(120, 0, 32)];
     pyl.forEach(p => {
-      add(new THREE.CylinderGeometry(0.25, 0.9, 18, 4), M(0x7d878c), V(p.x, 9, p.z));
+      add(new THREE.CylinderGeometry(0.16, 0.62, 18, 4), M(0x7d878c), V(p.x, 9, p.z));
       add(new THREE.BoxGeometry(0.4, 0.4, 7), M(0x7d878c), V(p.x, 16.5, p.z));
+      add(new THREE.BoxGeometry(0.3, 0.3, 4.6), M(0x7d878c), V(p.x, 13.2, p.z));
     });
     const wireMat = new THREE.MeshBasicMaterial({ color: 0x3a3f30 });
     const wires = [-3, 0, 3].map(o => {
@@ -388,6 +409,29 @@
     const pulses = new THREE.InstancedMesh(new THREE.SphereGeometry(0.22, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe27a }), pulseItems.length);
     scene.add(pulses);
     const pv = V(0, 0, 0), pscale = V(1, 1, 1);
+
+    // passive heat removal: four air-cooled heat exchangers high on the containment wall
+    const phrsMat = M(0x7d8a90, { metalness: 0.5, roughness: 0.5, emissive: 0xff7a2e, emissiveIntensity: 0 });
+    const phrsAir = [];
+    [21.2, 23.8].forEach(y => { add(new THREE.TorusGeometry(16.15, 0.14, 8, 96), M(0x6f7b81, { metalness: 0.6, roughness: 0.4 }), V(0, y, 0)).rotation.x = Math.PI / 2; });
+    [0, 90, 180, 270].forEach(deg => {
+      const a = deg * Math.PI / 180, n = V(Math.sin(a), 0, Math.cos(a));
+      const box = add(new THREE.BoxGeometry(4.4, 3.4, 1.3), phrsMat, n.clone().multiplyScalar(16.9).setY(22.5), 'phrs');
+      box.rotation.y = a;
+      add(new THREE.BoxGeometry(3.4, 2.2, 1.0), M(0x566168), n.clone().multiplyScalar(17).setY(25.6)).rotation.y = a;
+      for (let i = 0; i < 3; i++) {
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0xffd2a8, transparent: true, depthWrite: false, opacity: 0 }));
+        sp.userData = { age: i / 3, base: n.clone().multiplyScalar(17.6).setY(26.5) };
+        scene.add(sp); phrsAir.push(sp);
+      }
+    });
+    // steam blown off to atmosphere when the condenser is lost
+    const vent = [];
+    for (let i = 0; i < 10; i++) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0xf2f6f8, transparent: true, depthWrite: false, opacity: 0 }));
+      sp.userData.age = i / 10; scene.add(sp); vent.push(sp);
+    }
+    add(new THREE.CylinderGeometry(0.35, 0.35, 5, 12), M(PIPE_STYLE.steam.color), V(26, 23, -2.6), 'pipe').userData.kind = 'steam';
 
     // every solid lit surface casts and takes shadow; glass, glow and the ground plane do not cast
     scene.traverse(o => {
@@ -409,7 +453,8 @@
       { name: 'Turbine', pos: V(48, 14.6, 0), pick: 'turbine', view: 'turbine', maxR: 400 },
       { name: 'Generator', pos: V(68, 12.5, 0), pick: 'generator', view: 'turbine', maxR: 400 },
       { name: 'Condenser', pos: V(51.5, 5, 5.5), pick: 'condenser', maxR: 150 },
-      { name: 'Cooling tower', pos: V(110, 56, -42), pick: 'tower', maxR: 400 }
+      { name: 'Cooling tower', pos: V(110, 56, -42), pick: 'tower', maxR: 400 },
+      { name: 'Passive heat removal', pos: V(0, 27.6, 17), pick: 'phrs', maxR: 110 }
     ];
     labels.forEach(l => {
       const b = document.createElement('button');
@@ -439,9 +484,9 @@
 
     /* ---------- camera ---------- */
     const VIEWS = {
-      overview: { t: V(42, 6, -6), r: 125, th: 0.6, ph: 1.08 },
-      core: { t: V(0, 7, 0), r: 17, th: 0, ph: 1.15 },
-      steam: { t: V(2, 12, 0), r: 30, th: 0.55, ph: 1.0 },
+      overview: { t: V(46, 9, -12), r: 165, th: 0.24, ph: 1.12 },
+      core: { t: V(0, 7.4, 0), r: 19.5, th: 0, ph: 1.15 },
+      steam: { t: V(2, 12.5, 0), r: 37, th: 0.55, ph: 0.98 },
       turbine: { t: V(53, 7, 0), r: 44, th: 0.42, ph: 1.18 }
     };
     const cam = { t: VIEWS.overview.t.clone(), r: VIEWS.overview.r, th: VIEWS.overview.th, ph: VIEWS.overview.ph };
@@ -511,7 +556,8 @@
     }
 
     /* ---------- per-frame update ---------- */
-    const hotCol = new THREE.Color(), baseHot = new THREE.Color(PIPE_STYLE.hot.color);
+    const hotCol = new THREE.Color(), baseHot = new THREE.Color(PIPE_STYLE.hot.color), HOTTEST = new THREE.Color(0xd8452f);
+    let shadowT = 1, phrsLvl = 0, ventLvl = 0;
     function flowOf(kind, steam, dump, rej) {
       switch (kind) {
         case 'hot': case 'cold': return { v: 3.2 * S.flow, f: S.flow };
@@ -523,6 +569,8 @@
       }
     }
     function update(rdt) {
+      clock += rdt;
+      shadowT += rdt; if (shadowT > 0.25) { shadowT = 0; renderer.shadowMap.needsUpdate = true; }
       updateRods(); updateCore();
       const steam = Math.max(0, S.Ps), dump = R.onGrid() ? 0 : S.qsg;
       const rej = clamp((S.qsg - S.Ps * P.C.ETA) / 0.6 + (S.qsg > 0.01 ? 0.12 : 0), 0, 1.3);
@@ -532,10 +580,34 @@
         p.tex.offset.x -= fl.v * rdt / p.cycle;
         p.mat.emissiveIntensity = fl.f > 0.01 ? 0.25 + 0.85 * Math.min(1, fl.f) : 0;
       });
-      hotCol.copy(baseHot).lerp(new THREE.Color(0xd8452f), clamp((R.coreOut() - 295) / 35, 0, 1));
+      hotCol.copy(baseHot).lerp(HOTTEST, clamp((R.coreOut() - 295) / 35, 0, 1));
       pipes.forEach(p => { if (p.kind === 'hot' || p.kind === 'surge') p.mat.color.copy(hotCol); });
       sgTubeMat.color.setRGB(0.55 + 0.4 * clamp((S.Tm - 286) / 30, 0, 1), 0.4, 0.3);
-      pumps.forEach((p, i) => { p.rotation.y += (S.pumps[i] ? 1 : 0.05) * S.flow * 9 * rdt; });
+      pumps.forEach((p, i) => {
+        p.rotation.y += (S.seized[i] ? 0 : S.pw[i] + 0.04 * S.flow) * 9 * rdt;
+        pumpMarks[i].color.setHex(S.seized[i] ? 0xff3b2f : 0xffc83a);
+      });
+      sgWater.forEach(w => {
+        const h = -1.7 + 2.0 * S.sg;                       // surface height above the shell axis
+        w.visible = S.sg > 0.02;
+        w.position.y = w.userData.cy + h;
+        w.scale.set(12, 2 * Math.sqrt(4 - h * h) * 0.97, 1);
+      });
+      phrsLvl += ((S.phrs ? 1 : 0) - phrsLvl) * Math.min(1, rdt * 0.8);
+      phrsMat.emissiveIntensity = 0.55 * phrsLvl;
+      phrsAir.forEach(sp => {
+        const u = sp.userData; u.age = (u.age + rdt * 0.22) % 1;
+        sp.position.set(u.base.x, u.base.y + u.age * 12, u.base.z);
+        const s = 3 + u.age * 7; sp.scale.set(s, s, 1);
+        sp.material.opacity = 0.3 * phrsLvl * (1 - u.age) * Math.min(1, u.age * 5);
+      });
+      ventLvl += (clamp(S.vent * 4, 0, 1) - ventLvl) * Math.min(1, rdt * 1.5);
+      vent.forEach(sp => {
+        sp.userData.age = (sp.userData.age + rdt * 0.35) % 1;
+        const a = sp.userData.age, s = 2.5 + a * 16;
+        sp.position.set(26 + a * 9, 25.5 + a * 30, -2.6 + a * 3); sp.scale.set(s, s, 1);
+        sp.material.opacity = 0.5 * ventLvl * (1 - a) * Math.min(1, a * 8);
+      });
       rotor.rotation.x += (S.rpm / 3000) * 2 * Math.PI * 0.9 * rdt;
       plume.forEach(sp => {
         sp.userData.age = (sp.userData.age + rdt * 0.06) % 1;

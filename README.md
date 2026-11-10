@@ -17,6 +17,7 @@ Built as a teaching aid for a nuclear engineering capstone at Nazarbayev Univers
 - Watch thermal and electrical power, reactivity and its parts, reactor period, neutron power on a log scale, coolant and fuel temperatures, decay heat and turbine speed.
 - See flow on every pipe: arrows move with the flow and fade when it stops.
 - Run accident scenarios: loss of all pumps, one pump trip, a seized pump, loss of feedwater, station blackout with passive heat removal, and uncontrolled rod withdrawal. Untick automatic protection to see each one without a scram. A live chart tracks power, core flow, heat to the steam generators and the hottest channel outlet, with a timeline of what the plant does.
+- Watch accidents in the 3D plant: steam generator water levels fall and uncover the tubes, each pump flywheel slows on its own (a seized pump is marked red), the passive heat removal units on the containment warm up, steam vents when the condenser is lost, and the core glow turns from blue to red-orange when the fuel loses its DNB margin.
 - Open cross-sections: the 163-assembly core (power or fuel loading), a TVS-2006 assembly (312 fuel rods, 18 guide channels, central tube, gadolinia rods), a fuel rod with its live radial temperature profile, and a guide channel with the absorber in or out.
 
 ## Model
@@ -28,11 +29,11 @@ Built as a teaching aid for a nuclear engineering capstone at Nazarbayev Univers
 | Control | Regulating group 3000 pcm (S-curve), shutdown banks 9000 pcm, boric acid −12 pcm/ppm |
 | Heat | Fuel and coolant lumps; steam generators at 7.0 MPa (285.8 °C); decay heat in three groups totalling 6.5 % |
 | Secondary | Electrical output 37.5 % of steam generator heat; turbine at 3000 rpm on the grid, coasting down when tripped |
-| Protection | Withdrawal blocked below 20 s period, above 104 % power or 330 °C outlet; scram on 112 % power, 335 °C outlet, 10 s period (startup range), two pumps lost, a seized pump or low steam generator level; all automatic actions can be switched off |
+| Protection | Withdrawal blocked below 20 s period, above 104 % power or 332 °C outlet; scram on 112 % power, 337 °C outlet, 10 s period (startup range), two pumps lost, a seized pump or low steam generator level; all automatic actions can be switched off |
 | Accidents | Pump flywheel coastdown (speed halves in 15 s), natural circulation ∝ heat^1/3 (10 % at full heat), DNB ratio estimate on the hottest rod (1.9 nominal, limit 1.3), steam generator inventory of 5 min at full power, emergency feedwater 3 % after 30 s, passive heat removal 2 %, automatic power reduction to 67 % on losing one pump |
 | Fuel rod | Steady conduction: UO₂ conductivity from Fink (2000), 6000 W/m²·K gap, Zr-1%Nb cladding at 17 W/m·K, mid-plane with axial factor 1.3 |
 
-Rated conditions: 3200 MWt, 1200 MWe gross, 16.2 MPa, core inlet 298.2 °C and outlet 325 °C.
+Rated conditions: 3200 MWt, 1200 MWe gross, 16.2 MPa, core inlet 298.2 °C and outlet 328.9 °C.
 
 ## Where this departs from standard practice
 

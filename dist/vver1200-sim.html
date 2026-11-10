@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>VVER-1200 plant simulator</title>
 <meta name="description" content="Interactive 3D VVER-1200 nuclear power plant: point-kinetics reactor model, control rods, primary and secondary circuits, turbine and core cross-sections.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230b1216'/%3E%3Cpath d='M16 5l9.5 5.5v11L16 27l-9.5-5.5v-11z' fill='none' stroke='%2345aaff' stroke-width='2.4'/%3E%3Ccircle cx='16' cy='16' r='3.6' fill='%23ffc83a'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
@@ -72,6 +73,23 @@ button,input{font:inherit;color:inherit}
 .info .live{margin-top:6px;color:var(--stage-ink);font-size:14px;font-variant-numeric:tabular-nums}
 .info .x{position:absolute;top:4px;right:4px;background:none;border:0;color:var(--stage-ink-2);font-size:22px;line-height:1;padding:4px 9px;cursor:pointer}
 .info .go{margin-top:9px;background:#e6eee8;color:#0b1216;border:0;border-radius:4px;padding:6px 10px;font:600 14px "Barlow Condensed",Barlow,sans-serif;cursor:pointer}
+.hud{position:absolute;right:10px;top:92px;width:min(300px,calc(100% - 20px));background:rgba(10,18,22,.88);border:1px solid rgba(160,190,175,.25);border-radius:6px;padding:10px 12px 11px;backdrop-filter:blur(8px)}
+.hud-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.hud-top b{font:600 17px/1.2 "Barlow Condensed",Barlow,sans-serif}
+.hud-top span{font-size:13px;color:var(--stage-ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.hud-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:8px 0 0}
+.hud-grid dt{font-size:11.5px;line-height:1.2;color:var(--stage-ink-2)}
+.hud-grid dd{margin:1px 0 0;font:600 20px/1.1 "Barlow Condensed",Barlow,sans-serif;font-variant-numeric:tabular-nums}
+.hud-grid dd.warn{color:#ff7a66}
+.hud p{margin:9px 0 0;padding-top:8px;border-top:1px solid rgba(160,190,175,.2);font-size:13px;line-height:1.35;color:var(--stage-ink)}
+.hud p.bad{color:#ff9a8a}
+@media (max-width:760px){
+  .hud{top:auto;bottom:30px;left:10px;right:10px;width:auto}
+  .hud:not([hidden]) ~ .info{bottom:auto;top:52px}
+  .hud:not([hidden]) ~ .hint{display:none}
+  .hud p{display:none}
+  .trip{top:90px}
+}
 .hint{position:absolute;right:10px;bottom:8px;left:10px;margin:0;color:var(--stage-ink-2);font-size:12px;text-align:right;pointer-events:none}
 
 /* panel */
@@ -278,6 +296,16 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
       <button type="button" data-view="turbine">Turbine hall</button>
     </nav>
     <div class="trip" id="trip" hidden></div>
+    <div class="hud" id="hud" hidden aria-live="off">
+      <div class="hud-top"><b id="hudName"></b><span id="hudClock"></span></div>
+      <dl class="hud-grid">
+        <div><dt>Power</dt><dd id="hudP"></dd></div>
+        <div><dt>Core flow</dt><dd id="hudF"></dd></div>
+        <div><dt>Heat out</dt><dd id="hudQ"></dd></div>
+        <div><dt>DNB ratio</dt><dd id="hudD"></dd></div>
+      </dl>
+      <p id="hudMsg"></p>
+    </div>
     <div class="info" id="info" hidden>
       <button type="button" class="x" id="infoClose" aria-label="Close">×</button>
       <h3 id="infoTitle"></h3>
@@ -291,7 +319,7 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
   <aside class="panel">
     <div class="head">
       <h1>VVER-1200 plant simulator</h1>
-      <p>Drive the control rods, trip pumps, scram the reactor and follow the heat all the way to the grid.</p>
+      <p>Drive the control rods, trip pumps, scram the reactor, run accident scenarios and follow the heat all the way to the grid.</p>
     </div>
     <div class="pipes-key" aria-label="Pipe colours">
       <span><i style="background:var(--hot)"></i>Hot leg</span>
@@ -309,14 +337,14 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
       <div><span class="k">Reactivity</span><span class="v" id="rho">0 pcm</span></div>
       <div><span class="k">Reactor period</span><span class="v" id="per">∞</span></div>
       <div><span class="k">Core flow</span><span class="v" id="flow">100 %</span></div>
-      <div><span class="k">Core inlet</span><span class="v" id="tin">298 °C</span></div>
-      <div><span class="k">Core outlet</span><span class="v" id="tout">325 °C</span></div>
+      <div><span class="k">Core inlet</span><span class="v" id="tin">298.2 °C</span></div>
+      <div><span class="k">Core outlet</span><span class="v" id="tout">328.9 °C</span></div>
       <div><span class="k">Fuel average</span><span class="v" id="tf">900 °C</span></div>
       <div><span class="k">Turbine speed</span><span class="v" id="rpm">3000 rpm</span></div>
       <div><span class="k">Decay heat</span><span class="v" id="dh">6.5 %</span></div>
       <div><span class="k">Boric acid</span><span class="v" id="bor">600 ppm</span></div>
       <div><span class="k">DNB ratio <abbr title="Departure from nucleate boiling: how far the hottest rod is from a boiling crisis. Limit 1.3.">?</abbr></span><span class="v" id="dnbr">1.90</span></div>
-      <div><span class="k">Hottest channel out</span><span class="v" id="thot">336 °C</span></div>
+      <div><span class="k">Hottest channel out</span><span class="v" id="thot">338.1 °C</span></div>
       <div><span class="k">SG water level</span><span class="v" id="sgl">100 %</span></div>
     </div>
     <div class="logm">
@@ -422,7 +450,7 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
       <summary>How this model works</summary>
       <p>Reactor power comes from point kinetics with six delayed-neutron groups for U-235 (β = 650 pcm, Λ = 20 µs) and a weak neutron source. Feedback is Doppler (−2.2 pcm/K on average fuel temperature) and moderator (−25 pcm/K on average coolant temperature), worth about 2000 pcm between hot zero power and full power.</p>
       <p>Heat flows through two lumps, fuel and coolant, to steam generators held at 7.0 MPa (285.8 °C). Decay heat is three exponential groups totalling 6.5 % of fission power. Electrical output is 37.5 % of the heat leaving the steam generators, so 3200 MWt gives 1200 MWe.</p>
-      <p>Interlocks follow VVER practice in simplified form: rod withdrawal is blocked below a 20 s period, above 104 % power or above 330 °C core outlet, and the reactor scrams on 112 % power, 335 °C outlet, a 10 s period in the startup range, or loss of two coolant pumps.</p>
+      <p>Interlocks follow VVER practice in simplified form: rod withdrawal is blocked below a 20 s period, above 104 % power or above 332 °C core outlet, and the reactor scrams on 112 % power, 337 °C outlet, a 10 s period in the startup range, or loss of two coolant pumps.</p>
       <p>Accident scenarios add a few more pieces. Pumps coast down on their flywheels (speed halves 15 s after losing power), and natural circulation carries about 10 % flow at full heat, falling with the cube root of the heat. The DNB ratio is a teaching estimate for the hottest rod: 1.9 at full power, scaled by the square root of flow and by subcooling, divided by the heat flux leaving the fuel; the design limit shown is 1.3. Steam generators hold about 5 minutes of full-power boil-off. Emergency feedwater starts 30 s after a low level and supplies 3 %. The passive heat removal system condenses up to 2 % of rated power and returns it. Pressure is held at 16.2 MPa throughout, so above 348 °C the page reports boiling instead of a temperature: the lumped model does not track steam in the core.</p>
       <p>The cross-sections use the TVS-2006 assembly geometry. Rod temperatures come from a steady conduction solution with temperature-dependent UO₂ conductivity (Fink 2000), a 6000 W/m²·K gap and Zr-1%Nb cladding, at the mid-plane with an axial factor of 1.3. The loading pattern and control cluster map are illustrative, not a real VVER-1200 core design.</p>
       <p>This is a teaching model, not plant-simulator practice. Real VVER analysis couples 3D nodal neutronics to system codes such as KORSAR or RELAP. The regulating group is worth 3000 pcm here so rods alone can cover the power defect; real plants share that job with boric acid. Rods move at 1 % of core height per second, about twice real speed. The turbine spin is slowed for viewing; on the grid it always turns at 3000 rpm.</p>
@@ -482,9 +510,9 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
     P_NOM: 3200,            // MWt
     PE_NOM: 1200,           // MWe gross
     TF0: 900,               // core-average fuel temperature at 100 %, °C (lumped)
-    TM0: 311.6,             // core-average coolant temperature at 100 %, °C
+    TM0: 313.55,            // core-average coolant temperature at 100 %, °C
     TS: 285.8,              // saturation temperature at 7.0 MPa, °C
-    DT_CORE: 26.8,          // core ΔT at 100 % power and flow, K
+    DT_CORE: 30.7,          // core ΔT at 100 % power and flow, K (298.2 °C in, 328.9 °C out)
     P_PRIMARY: 16.2, P_STEAM: 7.0,
     W_REG: 3000,            // regulating group worth, pcm (exaggerated, see README)
     W_SD: 9000,             // shutdown banks worth, pcm
@@ -497,8 +525,8 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
     BORON_RATE: 1.5,        // ppm/s
     DH_A: [0.015, 0.02, 0.03], DH_T: [3, 40, 1000],
     SRC: 3e-4,              // neutron source term, relative units per s
-    TRIP_POWER: 1.12, TRIP_TOUT: 335, TRIP_PERIOD: 10,
-    BLOCK_PERIOD: 20, BLOCK_POWER: 1.04, BLOCK_TOUT: 330,
+    TRIP_POWER: 1.12, TRIP_TOUT: 337, TRIP_PERIOD: 10,
+    BLOCK_PERIOD: 20, BLOCK_POWER: 1.04, BLOCK_TOUT: 332,
     N_FA: 163, PINS_PER_FA: 312, ACTIVE_H: 3.73, KZ_MID: 1.3,
     ETA: 1200 / 3200,
     BETA_TOTAL: BT,
@@ -507,7 +535,7 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
     PUMP_START: 4,          // pump run-up time constant, s
     NC: 0.1,                // natural-circulation flow at full core heat, fraction of nominal (∝ heat^1/3)
     TSAT_P: 348,            // saturation temperature at 16.2 MPa, °C
-    F_DH: 1.4,              // hot-channel enthalpy-rise factor
+    F_DH: 1.3,              // hot-channel enthalpy-rise factor
     DNBR0: 1.9, DNBR_LIM: 1.3,
     SG_INV: 300,            // steam generator water inventory, in seconds of full-power boil-off
     SG_LOW: 0.4,            // scram on low steam generator level, fraction of normal inventory
@@ -538,7 +566,7 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
         Ps: 1, online: true, rpm: 3000,
         inv: 0, period: Infinity, rho: 0, parts: { rods: 0, boron: 0, dop: 0, mod: 0 },
         Pth: 1, qsg: 1, qfc: 1, dnbr: C.DNBR0, t: 0,
-        sg: 1, feed: true, efwAvail: true, efw: false, efwT: 0, phrs: false,
+        sg: 1, cond: true, vent: 0, feed: true, efwAvail: true, efw: false, efwT: 0, phrs: false,
         autoProt, driveFault: false, prc: false,
         scenario: null, plan: [], log: [], flags: {}
       });
@@ -591,7 +619,7 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
         else if (S.sdX > 0.001) block = 'Waiting for the shutdown banks to withdraw';
         else if (S.period > 0 && S.period < C.BLOCK_PERIOD) block = 'Withdrawal blocked: period below 20 s';
         else if (S.Pth > C.BLOCK_POWER) block = 'Withdrawal blocked: power above 104 %';
-        else if (coreOut() > C.BLOCK_TOUT) block = 'Withdrawal blocked: core outlet above 330 °C';
+        else if (coreOut() > C.BLOCK_TOUT) block = 'Withdrawal blocked: core outlet above 332 °C';
       }
       S.block = block;
       if (!block) S.rodX += clamp(S.rodTarget - S.rodX, -C.ROD_SPEED * dt, C.ROD_SPEED * dt);
@@ -659,6 +687,7 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
       }
       const feedIn = S.feed ? qsg + (1 - S.sg) * 0.05 : S.efw ? (S.sg < 1 ? C.EFW : Math.min(C.EFW, qsg)) : 0;
       const steamLoss = S.phrs ? Math.max(0, qsg - C.PHRS) : qsg;
+      S.vent = S.cond ? 0 : steamLoss;   // with no condenser the steam goes to atmosphere
       S.sg = clamp(S.sg + (feedIn - steamLoss) * dt / C.SG_INV, 0, 1);
 
       // departure-from-nucleate-boiling ratio on the hottest rod (teaching correlation):
@@ -687,7 +716,7 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
       if (!S.scram && S.autoProt) {
         const dead = S.seized.indexOf(true);
         if (Pth > C.TRIP_POWER) scram('Scram: power above 112 %');
-        else if (coreOut() > C.TRIP_TOUT) scram('Scram: core outlet above 335 °C');
+        else if (coreOut() > C.TRIP_TOUT) scram('Scram: core outlet above 337 °C');
         else if (on <= 2 && S.n > 0.3 && S.flow < 0.93) scram('Scram: two or more coolant pumps lost');
         else if (dead >= 0 && S.n > 0.3) scram('Scram: no pressure difference across pump ' + (dead + 1));
         else if (S.sg < C.SG_LOW && S.n > 0.05) scram('Scram: steam generator water level low');
@@ -747,7 +776,7 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
     { id: 'sbo', group: 'Loss of heat sink', name: 'Station blackout',
       what: 'No AC power on site: pumps, turbine and feedwater all stop. Only passive systems are left.',
       events: [
-        [5, 'Grid and diesel generators lost: no AC power on site. Pumps, turbine and feedwater all stop.', R => { R.S.pumps.fill(false); R.tripTurbine(); R.S.feed = false; R.S.efwAvail = false; }],
+        [5, 'Grid and diesel generators lost: no AC power on site. Pumps, turbine and feedwater all stop.', R => { R.S.pumps.fill(false); R.tripTurbine(); R.S.feed = false; R.S.efwAvail = false; R.S.cond = false; }],
         [8, 'Passive heat removal system: air dampers open on their own. Steam condenses in air-cooled heat exchangers above containment and drains back to the steam generators.', R => { R.S.phrs = true; }]
       ] },
     { id: 'rodw', group: 'Reactivity', name: 'Uncontrolled rod withdrawal',
@@ -914,10 +943,18 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.outputEncoding = THREE.sRGBEncoding;
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.shadowMap.autoUpdate = false;     // the scene barely moves: refresh shadows a few times a second
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0b1216);
-    scene.fog = new THREE.Fog(0x0b1216, 170, 420);
+    const FOG = 0x010305;     // linear value that displays as the #15222a horizon
+    scene.background = (function () {
+      const c = document.createElement('canvas'); c.width = 2; c.height = 256;
+      const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
+      gr.addColorStop(0, '#0b141a'); gr.addColorStop(0.3, '#15222a'); gr.addColorStop(1, '#15222a');
+      g.fillStyle = gr; g.fillRect(0, 0, 2, 256);
+      const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t;
+    })();
+    scene.fog = new THREE.Fog(FOG, 170, 380);
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 800);
     scene.add(new THREE.HemisphereLight(0xc8dae8, 0x1b2621, 0.55));
     const sun = new THREE.DirectionalLight(0xfff4e6, 0.95);
@@ -959,9 +996,10 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
       return m;
     }
 
-    const ground = add(new THREE.PlaneGeometry(600, 600), M(0x121a17, { metalness: 0, roughness: 1 }));
+    const ground = add(new THREE.PlaneGeometry(900, 900), M(0x070c0b, { metalness: 0, roughness: 1, envMapIntensity: 0.25 }));
     ground.rotation.x = -Math.PI / 2;
-    const grid = new THREE.GridHelper(600, 120, 0x2a3a33, 0x1f2b26);
+    const grid = new THREE.GridHelper(600, 60, 0x1c2a26, 0x131d1a);
+    grid.material.transparent = true; grid.material.opacity = 0.55;
     grid.position.y = 0.02; scene.add(grid);
 
     function glowTexture() {
@@ -1107,7 +1145,8 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
       shaftMesh.instanceMatrix.needsUpdate = rodProxy.instanceMatrix.needsUpdate = true;
     }
     const COLD = new THREE.Color(0x6d7378), HOT = new THREE.Color(0xe8782c), WHITE = new THREE.Color(0xffd9a0), SEL = new THREE.Color(0x7fe3ff);
-    let selected = null;
+    let selected = null, clock = 0;
+    const CALM = new THREE.Color(0x45aaff), CALM2 = new THREE.Color(0x3aa4ff), ALARM = new THREE.Color(0xff4a1c);
     const cellIndex = new Map(core.cells.map((c, i) => [c, i]));
     function updateCore() {
       const K = P.assemblyPowers(core, R.regX(), S.sdX);
@@ -1122,7 +1161,12 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
       fuelMesh.instanceColor.needsUpdate = true;
       const glow = Math.max(clamp(Math.sqrt(S.n), 0, 1.2), clamp((S.Pth - S.n * (1 - P.C.DH_SUM)) * 4, 0, 0.3));
       coreGlowMat.opacity = 0.015 + 0.11 * glow; waterMat.opacity = 0.015 + 0.05 * glow;
-      halo.material.opacity = 0.03 + 0.22 * glow; blueLight.intensity = 0.15 + 1.6 * glow;
+      // losing cooling margin: the glow turns from Cherenkov blue to a pulsing red-orange
+      const danger = clamp((P.C.DNBR_LIM - S.dnbr) / 0.5, 0, 1), pulse = 0.75 + 0.25 * Math.sin(clock * 7);
+      halo.material.color.copy(CALM).lerp(ALARM, danger); blueLight.color.copy(CALM).lerp(ALARM, danger);
+      coreGlowMat.color.copy(CALM2).lerp(ALARM, danger);
+      halo.material.opacity = (0.03 + 0.22 * glow) * (1 + danger * (1.6 * pulse - 0.2));
+      blueLight.intensity = (0.15 + 1.6 * glow) * (1 + danger * 1.5 * pulse);
     }
 
     /* ---------- four primary loops ---------- */
@@ -1134,7 +1178,8 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
     const sgTubeMat = new THREE.MeshBasicMaterial({ color: 0xd8794a });
     const sgTubes = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05, 0.05, 10.4, 6), sgTubeMat, 4 * 5 * 7);
     let tI = 0;
-    const pumps = [], sgCenters = [], pumpPos = [], hotMid = [], coldMid = [];
+    const pumps = [], pumpMarks = [], sgCenters = [], sgWater = [], pumpPos = [], hotMid = [], coldMid = [];
+    const sgWaterMat = M(0x0e3f6e, { metalness: 0, roughness: 0.1, transparent: true, opacity: 0.72, depthWrite: false });
     const NOZ = 2.2;
     [45, 135, 225, 315].forEach((deg, k) => {
       const a = deg * Math.PI / 180, n = V(Math.sin(a), 0, Math.cos(a)), t = V(Math.cos(a), 0, -Math.sin(a));
@@ -1143,6 +1188,10 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
       // local y along the shell axis, local z (the opening) pointing up
       const qSG = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(t.clone().cross(Y), t, Y));
       const shell = add(sgShellGeo, sgShellMat, c, 'sg'); shell.quaternion.copy(qSG); shell.userData.loop = k;
+      // boiling water on the secondary side: its surface drops as the steam generator loses inventory
+      const water = add(new THREE.PlaneGeometry(1, 1), sgWaterMat, c);
+      water.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(t, Y.clone().cross(t), Y));
+      water.userData.cy = c.y; sgWater.push(water);
       [6, -6].forEach((o, j) => {
         const cap = add(sgCapGeo[j], sgShellMat, c.clone().addScaledVector(t, o), 'sg');
         cap.quaternion.copy(qSG); cap.userData.loop = k;
@@ -1172,7 +1221,7 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
       disc.userData = { pick: 'pump', loop: k }; pickables.push(disc); fly.add(disc);
       const mark = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.26, 0.16), new THREE.MeshBasicMaterial({ color: 0xffc83a }));
       mark.position.x = 0.45; fly.add(mark);
-      scene.add(fly); pumps.push(fly);
+      scene.add(fly); pumps.push(fly); pumpMarks.push(mark.material);
       // cold leg: down from the cold collector through the loop seal into the pump, then to the lower nozzle row
       pipe([V(cc.x, 11.7, cc.z), V(cc.x, 5.5, cc.z), V(Pp.x, 5.5, Pp.z), V(Pp.x, 7.95, Pp.z)], 0.45, 'cold', { bend: 1.0, loop: k });
       pipe([V(Pp.x, 9.4, Pp.z), pn.clone().multiplyScalar(NOZ).setY(9.4)], 0.45, 'cold', { loop: k });
@@ -1273,8 +1322,9 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
     add(new THREE.BoxGeometry(4, 4.5, 3.5), M(0x58626a), V(80, 2.25, 9), 'generator');
     const pyl = [V(92, 0, 16), V(106, 0, 24), V(120, 0, 32)];
     pyl.forEach(p => {
-      add(new THREE.CylinderGeometry(0.25, 0.9, 18, 4), M(0x7d878c), V(p.x, 9, p.z));
+      add(new THREE.CylinderGeometry(0.16, 0.62, 18, 4), M(0x7d878c), V(p.x, 9, p.z));
       add(new THREE.BoxGeometry(0.4, 0.4, 7), M(0x7d878c), V(p.x, 16.5, p.z));
+      add(new THREE.BoxGeometry(0.3, 0.3, 4.6), M(0x7d878c), V(p.x, 13.2, p.z));
     });
     const wireMat = new THREE.MeshBasicMaterial({ color: 0x3a3f30 });
     const wires = [-3, 0, 3].map(o => {
@@ -1289,6 +1339,29 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
     const pulses = new THREE.InstancedMesh(new THREE.SphereGeometry(0.22, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe27a }), pulseItems.length);
     scene.add(pulses);
     const pv = V(0, 0, 0), pscale = V(1, 1, 1);
+
+    // passive heat removal: four air-cooled heat exchangers high on the containment wall
+    const phrsMat = M(0x7d8a90, { metalness: 0.5, roughness: 0.5, emissive: 0xff7a2e, emissiveIntensity: 0 });
+    const phrsAir = [];
+    [21.2, 23.8].forEach(y => { add(new THREE.TorusGeometry(16.15, 0.14, 8, 96), M(0x6f7b81, { metalness: 0.6, roughness: 0.4 }), V(0, y, 0)).rotation.x = Math.PI / 2; });
+    [0, 90, 180, 270].forEach(deg => {
+      const a = deg * Math.PI / 180, n = V(Math.sin(a), 0, Math.cos(a));
+      const box = add(new THREE.BoxGeometry(4.4, 3.4, 1.3), phrsMat, n.clone().multiplyScalar(16.9).setY(22.5), 'phrs');
+      box.rotation.y = a;
+      add(new THREE.BoxGeometry(3.4, 2.2, 1.0), M(0x566168), n.clone().multiplyScalar(17).setY(25.6)).rotation.y = a;
+      for (let i = 0; i < 3; i++) {
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0xffd2a8, transparent: true, depthWrite: false, opacity: 0 }));
+        sp.userData = { age: i / 3, base: n.clone().multiplyScalar(17.6).setY(26.5) };
+        scene.add(sp); phrsAir.push(sp);
+      }
+    });
+    // steam blown off to atmosphere when the condenser is lost
+    const vent = [];
+    for (let i = 0; i < 10; i++) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0xf2f6f8, transparent: true, depthWrite: false, opacity: 0 }));
+      sp.userData.age = i / 10; scene.add(sp); vent.push(sp);
+    }
+    add(new THREE.CylinderGeometry(0.35, 0.35, 5, 12), M(PIPE_STYLE.steam.color), V(26, 23, -2.6), 'pipe').userData.kind = 'steam';
 
     // every solid lit surface casts and takes shadow; glass, glow and the ground plane do not cast
     scene.traverse(o => {
@@ -1310,7 +1383,8 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
       { name: 'Turbine', pos: V(48, 14.6, 0), pick: 'turbine', view: 'turbine', maxR: 400 },
       { name: 'Generator', pos: V(68, 12.5, 0), pick: 'generator', view: 'turbine', maxR: 400 },
       { name: 'Condenser', pos: V(51.5, 5, 5.5), pick: 'condenser', maxR: 150 },
-      { name: 'Cooling tower', pos: V(110, 56, -42), pick: 'tower', maxR: 400 }
+      { name: 'Cooling tower', pos: V(110, 56, -42), pick: 'tower', maxR: 400 },
+      { name: 'Passive heat removal', pos: V(0, 27.6, 17), pick: 'phrs', maxR: 110 }
     ];
     labels.forEach(l => {
       const b = document.createElement('button');
@@ -1340,9 +1414,9 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
 
     /* ---------- camera ---------- */
     const VIEWS = {
-      overview: { t: V(42, 6, -6), r: 125, th: 0.6, ph: 1.08 },
-      core: { t: V(0, 7, 0), r: 17, th: 0, ph: 1.15 },
-      steam: { t: V(2, 12, 0), r: 30, th: 0.55, ph: 1.0 },
+      overview: { t: V(46, 9, -12), r: 165, th: 0.24, ph: 1.12 },
+      core: { t: V(0, 7.4, 0), r: 19.5, th: 0, ph: 1.15 },
+      steam: { t: V(2, 12.5, 0), r: 37, th: 0.55, ph: 0.98 },
       turbine: { t: V(53, 7, 0), r: 44, th: 0.42, ph: 1.18 }
     };
     const cam = { t: VIEWS.overview.t.clone(), r: VIEWS.overview.r, th: VIEWS.overview.th, ph: VIEWS.overview.ph };
@@ -1412,7 +1486,8 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
     }
 
     /* ---------- per-frame update ---------- */
-    const hotCol = new THREE.Color(), baseHot = new THREE.Color(PIPE_STYLE.hot.color);
+    const hotCol = new THREE.Color(), baseHot = new THREE.Color(PIPE_STYLE.hot.color), HOTTEST = new THREE.Color(0xd8452f);
+    let shadowT = 1, phrsLvl = 0, ventLvl = 0;
     function flowOf(kind, steam, dump, rej) {
       switch (kind) {
         case 'hot': case 'cold': return { v: 3.2 * S.flow, f: S.flow };
@@ -1424,6 +1499,8 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
       }
     }
     function update(rdt) {
+      clock += rdt;
+      shadowT += rdt; if (shadowT > 0.25) { shadowT = 0; renderer.shadowMap.needsUpdate = true; }
       updateRods(); updateCore();
       const steam = Math.max(0, S.Ps), dump = R.onGrid() ? 0 : S.qsg;
       const rej = clamp((S.qsg - S.Ps * P.C.ETA) / 0.6 + (S.qsg > 0.01 ? 0.12 : 0), 0, 1.3);
@@ -1433,10 +1510,34 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
         p.tex.offset.x -= fl.v * rdt / p.cycle;
         p.mat.emissiveIntensity = fl.f > 0.01 ? 0.25 + 0.85 * Math.min(1, fl.f) : 0;
       });
-      hotCol.copy(baseHot).lerp(new THREE.Color(0xd8452f), clamp((R.coreOut() - 295) / 35, 0, 1));
+      hotCol.copy(baseHot).lerp(HOTTEST, clamp((R.coreOut() - 295) / 35, 0, 1));
       pipes.forEach(p => { if (p.kind === 'hot' || p.kind === 'surge') p.mat.color.copy(hotCol); });
       sgTubeMat.color.setRGB(0.55 + 0.4 * clamp((S.Tm - 286) / 30, 0, 1), 0.4, 0.3);
-      pumps.forEach((p, i) => { p.rotation.y += (S.pumps[i] ? 1 : 0.05) * S.flow * 9 * rdt; });
+      pumps.forEach((p, i) => {
+        p.rotation.y += (S.seized[i] ? 0 : S.pw[i] + 0.04 * S.flow) * 9 * rdt;
+        pumpMarks[i].color.setHex(S.seized[i] ? 0xff3b2f : 0xffc83a);
+      });
+      sgWater.forEach(w => {
+        const h = -1.7 + 2.0 * S.sg;                       // surface height above the shell axis
+        w.visible = S.sg > 0.02;
+        w.position.y = w.userData.cy + h;
+        w.scale.set(12, 2 * Math.sqrt(4 - h * h) * 0.97, 1);
+      });
+      phrsLvl += ((S.phrs ? 1 : 0) - phrsLvl) * Math.min(1, rdt * 0.8);
+      phrsMat.emissiveIntensity = 0.55 * phrsLvl;
+      phrsAir.forEach(sp => {
+        const u = sp.userData; u.age = (u.age + rdt * 0.22) % 1;
+        sp.position.set(u.base.x, u.base.y + u.age * 12, u.base.z);
+        const s = 3 + u.age * 7; sp.scale.set(s, s, 1);
+        sp.material.opacity = 0.3 * phrsLvl * (1 - u.age) * Math.min(1, u.age * 5);
+      });
+      ventLvl += (clamp(S.vent * 4, 0, 1) - ventLvl) * Math.min(1, rdt * 1.5);
+      vent.forEach(sp => {
+        sp.userData.age = (sp.userData.age + rdt * 0.35) % 1;
+        const a = sp.userData.age, s = 2.5 + a * 16;
+        sp.position.set(26 + a * 9, 25.5 + a * 30, -2.6 + a * 3); sp.scale.set(s, s, 1);
+        sp.material.opacity = 0.5 * ventLvl * (1 - a) * Math.min(1, a * 8);
+      });
       rotor.rotation.x += (S.rpm / 3000) * 2 * Math.PI * 0.9 * rdt;
       plume.forEach(sp => {
         sp.userData.age = (sp.userData.age + rdt * 0.06) % 1;
@@ -1872,7 +1973,7 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
   const pe = () => Math.max(0, S.Ps * C.PE_NOM);
   const loopName = d => (d && d.loop != null ? ' ' + (d.loop + 1) : '');
   const INFO = {
-    reactor: { title: () => 'Reactor', text: 'Pressure vessel holding 163 fuel assemblies with 3.73 m of fuel height. Water at 16.2 MPa enters near 298 °C and leaves near 325 °C. The blue glow is Cherenkov light: fast electrons outrunning light in water.',
+    reactor: { title: () => 'Reactor', text: 'Pressure vessel holding 163 fuel assemblies with 3.73 m of fuel height. Water at 16.2 MPa enters near 298 °C and leaves near 329 °C. The blue glow is Cherenkov light: fast electrons outrunning light in water.',
       live: () => fmt(S.Pth * C.P_NOM) + ' MWt now, coolant in ' + fmt(R.coreIn(), 1) + ' °C, out ' + fmt(R.coreOut(), 1) + ' °C',
       go: () => ({ label: 'Open core cross-section', act: () => XS.open('core') }) },
     sg: { title: d => 'Steam generator' + loopName(d), text: 'A horizontal steam generator, a VVER signature; most Western PWRs use vertical U-tubes. Primary water runs through thousands of horizontal tubes and boils the water around them into steam at about 7 MPa.',
@@ -1888,6 +1989,8 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
     condenser: { title: () => 'Condenser', text: 'Turns turbine exhaust back into water under vacuum. About two thirds of the reactor heat leaves the plant here.',
       live: () => 'Rejecting about ' + fmt(Math.max(0, S.qsg * C.P_NOM - pe())) + ' MW' },
     feedpump: { title: () => 'Feedwater pump', text: 'Pushes condensate back to the steam generators. Heaters and the deaerator are not drawn.' },
+    phrs: { title: () => 'Passive heat removal system', text: 'Air-cooled heat exchangers on the containment wall, a VVER-1200 safety feature. With no electricity at all, steam from the steam generators condenses here in outside air and drains back by gravity, carrying decay heat away for days.',
+      live: () => S.phrs ? 'Working: removing up to ' + fmt(C.PHRS * C.P_NOM) + ' MW with no pumps or power' : 'Standing by. Run the station blackout scenario to see it work.' },
     tower: { title: () => 'Cooling tower', text: 'Rejects the condenser heat to the air. The plume grows and shrinks with the heat being dumped.',
       live: () => 'About ' + fmt(Math.max(0, S.qsg * C.P_NOM - pe())) + ' MW of waste heat' }
   };
@@ -2005,14 +2108,15 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
     trace.length = 0; traceAcc = 0; logShown = 0; evlog.innerHTML = '';
     const sc = P.SCENARIOS.find(s => s.id === id);
     $('#scenName').textContent = sc.name + (S.autoProt ? '' : ', no automatic protection');
-    $('#scenRun').hidden = false;
+    $('#scenRun').hidden = false; $('#hud').hidden = false;
+    $('#hudName').textContent = sc.name;
     document.querySelectorAll('.scen-btn').forEach(b => b.setAttribute('aria-pressed', b.dataset.id === id));
     setSpeed(1);
     if (plant) plant.setView(id === 'lofw' || id === 'sbo' ? 'steam' : 'core');
     sizeCanvases();
   }
   function endScenario() {
-    $('#scenRun').hidden = true; trace.length = 0;
+    $('#scenRun').hidden = true; $('#hud').hidden = true; trace.length = 0;
     document.querySelectorAll('.scen-btn').forEach(b => b.setAttribute('aria-pressed', 'false'));
   }
   function sampleTrace(simDt) {
@@ -2026,7 +2130,14 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
   const BAD = /Scram|DNB|boiling|dry|fails|lost|seizes|stop/;
   function renderLog() {
     if (!S.scenario) return;
-    $('#scenClock').textContent = 't = ' + fmt(S.t, S.t < 100 ? 1 : 0) + ' s';
+    const clockTxt = S.t < 120 ? 't = ' + fmt(S.t, 1) + ' s' : 't = ' + Math.floor(S.t / 60) + ' min ' + fmt(S.t % 60) + ' s';
+    $('#scenClock').textContent = clockTxt; $('#hudClock').textContent = clockTxt;
+    $('#hudP').textContent = fmt(S.Pth * 100) + ' %';
+    $('#hudF').textContent = fmt(S.flow * 100) + ' %';
+    $('#hudQ').textContent = fmt(S.qsg * 100) + ' %';
+    const hd = $('#hudD'); hd.textContent = S.dnbr > 9.9 ? '> 10' : fmt(S.dnbr, 2); hd.classList.toggle('warn', S.dnbr < C.DNBR_LIM);
+    const lastEv = S.log[S.log.length - 1], hm = $('#hudMsg');
+    if (lastEv && hm.textContent !== lastEv.text) { hm.textContent = lastEv.text; hm.classList.toggle('bad', BAD.test(lastEv.text) && lastEv.t > 0); }
     while (logShown < S.log.length) {
       const e = S.log[logShown++], li = document.createElement('li');
       li.innerHTML = '<time></time><span></span>';
@@ -2060,8 +2171,8 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
     [290, 320].forEach(T => hline(Yt(T), T + ' °C'));
     tg.strokeStyle = cs.getPropertyValue('--hot'); tg.setLineDash([4 * d, 3 * d]);
     tg.beginPath(); tg.moveTo(L, Yt(C.TSAT_P)); tg.lineTo(Rr, Yt(C.TSAT_P)); tg.stroke(); tg.setLineDash([]);
-    tg.fillStyle = cs.getPropertyValue('--hot'); tg.textAlign = 'left';
-    tg.fillText('boiling at 16.2 MPa', L + 4 * d, Yt(C.TSAT_P) - 4 * d);
+    tg.fillStyle = cs.getPropertyValue('--hot'); tg.textAlign = 'right';
+    tg.fillText('boils above 348 °C', Rr - 2 * d, Yt(C.TSAT_P) + 13 * d);
     tg.fillStyle = ink2; tg.textAlign = 'center';
     for (let t = 0; t <= tMax; t += tMax / 4) tg.fillText(fmt(t) + ' s', X(t), Hh - 4 * d);
     const line = (key, Y, col) => {
@@ -2247,8 +2358,9 @@ details p{margin:8px 0;color:var(--ink-2);max-width:62ch}
   renderPumps(); resizeAll(); applyHash();
   let last = performance.now(), uiT = 1, plotT = 1, xsT = 0, infoT = 0;
   function frame(now) {
-    const rdt = Math.min(0.05, Math.max(0, (now - last) / 1000)); last = now;
-    const simDt = rdt * speed;
+    // plant time follows the wall clock even when frames are slow; only the animation step is capped
+    const real = Math.min(0.25, Math.max(0, (now - last) / 1000)), rdt = Math.min(0.05, real); last = now;
+    const simDt = real * speed;
     R.advance(simDt); sample(simDt); sampleTrace(simDt);
     if (plant) plant.update(rdt);
     updateFis(rdt);

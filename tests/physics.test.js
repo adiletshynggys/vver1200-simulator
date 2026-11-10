@@ -31,7 +31,7 @@ test('steady state holds at full power', () => {
   const R = P.createReactor();
   run(R, 60);
   assert.ok(Math.abs(R.S.n - 1) < 1e-3);
-  assert.ok(Math.abs(R.coreOut() - 325) < 0.2);
+  assert.ok(Math.abs(R.coreOut() - 328.9) < 0.2);
   assert.ok(Math.abs(R.coreIn() - 298.2) < 0.2);
   assert.ok(Math.abs(R.S.Ps * P.C.PE_NOM - 1200) < 2);
 });
@@ -74,7 +74,7 @@ test('fuel rod temperatures are physically sensible', () => {
   assert.ok(Math.abs(P.kUO2(1000 - 273.15) - 3.47) < 0.02); // Fink 2000 at 1000 K
   const q = P.qAvg(1);
   assert.ok(Math.abs(q / 1000 - 16.87) < 0.05);           // average linear heat rate, kW/m
-  const r = P.rodProfile(q * P.C.KZ_MID, 311.6, 1, false);
+  const r = P.rodProfile(q * P.C.KZ_MID, P.C.TM0, 1, false);
   assert.ok(r.Tc > 850 && r.Tc < 1150, 'average rod centre ' + r.Tc);
   assert.ok(r.Tc > r.Tps && r.Tps > r.Tci && r.Tci > r.Tco && r.Tco > r.Tcool);
 });
